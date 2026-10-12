@@ -251,6 +251,11 @@ func _build_quick() -> void:
 	for c in quick_container.get_children():
 		c.queue_free()
 	var p := UI.palette()
+	# 固定首位：拍照识图导入（选图后自动填整理指令，点发送即可）
+	var vq := UI.button("📷 识图导入", p.accent, Color.WHITE, 24)
+	vq.custom_minimum_size = Vector2(0, 64)
+	vq.pressed.connect(func(): _pick_image("把这张图片里的单词/词组整理成词库（注意查重、拼写检查，新单词放到新的 Day 分组）"))
+	quick_container.add_child(vq)
 	for qp in DB.settings.get("quick_prompts", []):
 		var b := UI.button(String(qp.name), p.panel2, p.text, 24)
 		b.custom_minimum_size = Vector2(0, 64)
@@ -356,7 +361,8 @@ func _paste_file_dialog() -> void:
 			ctx_checks["file"].button_pressed = false)
 
 # ---------------- 附图（DeepSeek 识图） ----------------
-func _pick_image() -> void:
+## prefill：选图成功后预填的指令文本（「识图导入」快捷按钮用）
+func _pick_image(prefill := "") -> void:
 	UI.file_dialog(self, "选择图片（jpg / png / webp）",
 		DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
 		["*.jpg,*.jpeg,*.png,*.webp;图片;image/jpeg,image/png,image/webp"],
@@ -369,6 +375,8 @@ func _pick_image() -> void:
 				return
 			pending_image = data_url
 			pending_img_name = paths[0].get_file()
+			if prefill != "":
+				input.text = prefill
 			img_lbl.text = "📷 已附图：%s（随下一条消息发送，走视觉模型）" % pending_img_name
 			img_row.visible = true)
 

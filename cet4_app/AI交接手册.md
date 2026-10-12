@@ -242,8 +242,14 @@ unzip "%APPDATA%/Godot/export_templates/4.7.1.stable/android_source.zip" -d cet4
    - 根因：aapt 是老工具，非 ASCII 路径直接失败。修法：`cp 英眼书.apk yys_check.apk` 再查。
 7. **TLS 拦截下的各种网络失败**
    - curl 加 `--ssl-no-revoke`；git 仓库本地配置 `http.sslVerify=false`；raw.githubusercontent.com 经常被断 → 用 gitee 镜像 `https://gitee.com/mirrors/godot/raw/<tag>/<path>` 拉 Godot 源码；Gradle 发行包下不动 → wrapper `distributionUrl=file:///…gradle-8.11.1-bin.zip`（Maven 依赖本身能下）。
-8. **debug APK 约 169MB**
-   - 根因：`gradle_build/compress_native_libraries=false` + 双架构（armv7+arm64）libgodot.so 不压缩进包。发布想瘦身：开 `compress_native_libraries=true` 或打 release 包（release 需另配 keystore，注意签名不能换）。
+8. **debug APK 体积**：双架构 libgodot.so 约 158MB 是体积大头（85%）。已开 `gradle_build/compress_native_libraries=true`（v0.9.18），包体 169MB→71MB；代价仅是安装时解压略慢，运行无感。还能再瘦的接口：裁 `architectures/armeabi-v7a`（-30MB，但失去 32 位老机，不建议）、boot splash 的 splash.png（3MB）转 webp、裁 classes.dex 里的 androidx（风险高不值得）。
+9. **★最严重★ 内置词库根本没进 APK（关于页 单词 0 · 词组 0）**
+   - 根因：Godot 4.7 把 `.md`/`.txt` 识别为 `TextFile` 资源类型，导出收集文件时显式跳过（`editor_export_platform.cpp::_export_find_resources` 里 `if type == "TextFile": continue`）。v0.9.14–0.9.17 所有安装包都没有词库。
+   - 修法：`export_presets.cfg` 设 `include_filter="data/*.md, data/*.json"`（include 走真实文件系统 glob，不受 TextFile 跳过影响）。**任何运行时 FileAccess 读取的非导入文本都必须在这里登记**；验证方法：解 APK 取 `assets/assets.sparsepck`，扫字符串应见 data/words.md 等路径。
+10. **`-s` 脚本模式下全局类编译早于 autoload 注册**
+   - 现象：`--headless -s scripts/test_shots.gd` 报 "Identifier not found: DB"（widgets.gd 等 `class_name` 脚本），而无 class_name 的测试脚本正常。
+   - 修法：需要加载真实场景/截图的测试改走场景运行——`godot --path . scenes/test_shots.tscn`（Node 脚本 + 单节点场景）。纯 DB 逻辑测试用 `-s` 没问题。
+11. **弹窗挂错父节点被容器排版**：LanSyncDialog.open 曾 `parent.add_child(d)`，parent 是设置页 VBox → 弹窗被当成列表项挤到屏幕底部只露一条边。全幅弹窗一律挂 `get_tree().root`（UI.sheet 早就是这么做的）。
 
 ### 5.2 GDScript / 逻辑 bug
 

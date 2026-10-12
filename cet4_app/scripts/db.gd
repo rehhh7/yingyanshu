@@ -15,7 +15,7 @@ const MEMORY_PATH := "user://ai_memory.json"
 const BACKUP_DIR := "user://backups"
 const EXPORT_DIR := "user://exports"
 
-const VERSION := "0.9.17"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
+const VERSION := "0.9.18"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
 
 ## 读取内置更新日志；only_latest=true 时只取最新一个版本的段落
 static func changelog_text(only_latest := false) -> String:
@@ -834,6 +834,14 @@ func _append_md_section(lines: PackedStringArray, items: Array, key: String,
 func build_transfer_md() -> String:
 	return "# 英眼书互传\n\n" + export_groups_md("", "", true)
 
+## 文本是否含「# 组名」分组标题（互传文件 / 手整分组词库 / 内置词库格式）
+func is_groups_md(text: String) -> bool:
+	for raw in text.split("\n", false):
+		var line := String(raw).strip_edges()
+		if line.begins_with("# ") and line.length() > 2:
+			return true
+	return false
+
 ## 按 "# 组名" 切分并逐组解析。返回 [{name, res}]；没有标题时全部进新 Day
 func parse_groups_md(text: String) -> Array:
 	var out: Array = []
@@ -1206,6 +1214,42 @@ func rollback_backup(fname: String) -> String:
 	load_custom()
 	rebuild_library()
 	return "已回滚到 " + String(d.get("time", fname))
+
+## 备份显示名：用户改过名用 label，否则用时间文件名
+func get_backup_label(fname: String) -> String:
+	var d = _read_json(BACKUP_DIR + "/" + fname, {})
+	var lab := String(d.get("label", "")).strip_edges()
+	if lab != "":
+		return lab
+	return fname.trim_suffix(".json")
+
+## 重命名备份：只改 JSON 里的 label 字段，文件名不动（排序键保持时间序）
+func rename_backup(fname: String, label: String) -> String:
+	label = label.strip_edges()
+	var d = _read_json(BACKUP_DIR + "/" + fname, {})
+	if d.is_empty():
+		return "备份文件读取失败"
+	if label == "":
+		d.erase("label")
+	else:
+		d["label"] = label.left(40)
+	_write_json(BACKUP_DIR + "/" + fname, d)
+	return ""
+
+func delete_backup(fname: String) -> String:
+	if not FileAccess.file_exists(BACKUP_DIR + "/" + fname):
+		return "备份不存在"
+	DirAccess.remove_absolute(BACKUP_DIR + "/" + fname)
+	return ""
+
+## 批量删除备份，返回删除份数
+func delete_backups(fnames: PackedStringArray) -> int:
+	var n := 0
+	for f in fnames:
+		if FileAccess.file_exists(BACKUP_DIR + "/" + f):
+			DirAccess.remove_absolute(BACKUP_DIR + "/" + f)
+			n += 1
+	return n
 
 func factory_reset_library() -> void:
 	_write_json(CUSTOM_WORDS_PATH, [])

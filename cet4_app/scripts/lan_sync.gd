@@ -2,8 +2,8 @@ class_name LanSync
 extends Node
 ## 局域网互传引擎（纯离线，同 WiFi 下两台设备直连）
 ## 发现：宿主方每秒 UDP 广播一次「设备名」；搜索方监听广播列出设备
-## 握手：请求方连上后发 "REQ|<设备名>\n"；宿主方确认后回 4 字节大端长度 + UTF-8 JSON，长度 0 = 拒绝
-## 传输内容 = DB.build_backup_payload 的序列化；与蓝牙插件（YysKit）同一套交互
+## 握手：请求方连上后发 "REQ|<设备名>\n"；宿主方确认后回 4 字节大端长度 + UTF-8 载荷，长度 0 = 拒绝
+## 传输内容 = 固定 Markdown（DB.build_transfer_md，仅自定义词条；旧 JSON 备份载荷接收端兼容）；与蓝牙插件（YysKit）同一套交互
 
 signal peer_found(dev_name: String, ip: String)
 signal incoming_request(dev_name: String, ip: String)

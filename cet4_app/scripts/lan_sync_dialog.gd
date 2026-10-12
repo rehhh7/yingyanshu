@@ -24,7 +24,11 @@ static func open(parent: Node, payload := "", label := "") -> Control:
 	d._preset_payload = payload
 	d._preset_label = label
 	d._build()
-	parent.add_child(d)
+	# 必须挂到窗口根节点：挂进 VBox 等容器会被当成普通子项排版，弹窗被挤到列表底部
+	var host: Node = parent.get_tree().root if parent.is_inside_tree() else null
+	if host == null:
+		host = (Engine.get_main_loop() as SceneTree).root
+	host.add_child(d)
 	return d
 
 func _build() -> void:

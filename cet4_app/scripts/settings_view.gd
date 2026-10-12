@@ -1,6 +1,11 @@
 extends VBoxContainer
 ## 设置页（分组）：外观 / 字体 / 发音 / AI API / 数据管理 / 回滚与重置 / 关于
 
+# 备份列表状态：_rb_batch=批量管理模式，_rb_sel=勾选的备份文件名
+var _rb_list: VBoxContainer = null
+var _rb_batch := false
+var _rb_sel := {}
+
 func _ready() -> void:
 	add_theme_constant_override("separation", 14)
 	UI.full_rect(self)
@@ -301,13 +306,13 @@ func _ready() -> void:
 			_export_and_maybe_share(DB.export_all(), "英眼书备份.json", "*.json;JSON;application/json", "application/json")))
 	data_box.add_child(exp_json)
 
-	data_box.add_child(UI.label("导入单词：粘贴文本或选择文件（docx / txt / md）。「本地整理」不联网，程序自动识别「单词/词组 + 释义」、检索词库查重、放入新的 Day 分组，逐条确认后入库；格式太杂乱时可用「交给 AI 整理」。兼容旧版 JSON 备份。", 26, p.sub, true))
+	data_box.add_child(UI.label("导入单词：粘贴文本或选择文件（docx / txt / md）。「本地整理」不联网，程序自动识别「单词/词组 + 释义」、检索词库查重、放入新的 Day 分组，逐条确认后入库；带「# 组名」标题的文件（含互传收到的文件）会按组名直接入库；格式太杂乱时可用「交给 AI 整理」。兼容旧版 JSON 备份。", 26, p.sub, true))
 	# 可识别格式示例（折叠起来，需要时点开）
 	var fmt_g := _group("📋 能识别的格式（点开看示例）", false)
 	data_box.add_child(fmt_g)
 	var fmt_b: VBoxContainer = fmt_g.get_meta("body")
-	fmt_b.add_child(UI.label("abandon 放弃\nabandon v. 放弃\nabandon /əˈbændən/ n. 放弃\nabandon/əˈbændən/ 放弃\ntake off 起飞；脱下（词组自动识别）\n—— 表格/词典导出也能直接粘 ——\nabandon⇥/əˈbændən/⇥n. 放弃（Tab 分列）\nabandon,/əˈbændən/,\"n. 放弃\"（ECDICT 式 CSV）\n{\"word\":\"abandon\",\"translation\":\"n. 放弃\"}（JSONL）", 26, p.text, true))
-	fmt_b.add_child(UI.label("规则：每行一条，先英文后中文，释义必须是中文；行首的 1. / - / • 等序号自动忽略；Day 5、Unit 2 这类标题行自动跳过；# 开头是注释；PDF/拍照常见的「两条挤一行」会自动拆开。内容不是单词表时（如录音稿、文章）会弹出格式提示，请改用「交给 AI 整理」。", 24, p.sub, true))
+	fmt_b.add_child(UI.label("abandon 放弃\nabandon v. 放弃\nabandon /əˈbændən/ n. 放弃\nabandon/əˈbændən/ 放弃\ntake off 起飞；脱下（词组自动识别）\n—— 表格/词典导出也能直接粘 ——\nabandon⇥/əˈbændən/⇥n. 放弃（Tab 分列）\nabandon,/əˈbændən/,\"n. 放弃\"（ECDICT 式 CSV）\n{\"word\":\"abandon\",\"translation\":\"n. 放弃\"}（JSONL）\n—— 分组格式（互传文件同款）——\n# 我的第一组\nabandon 放弃\n# 我的第二组\ntake off 起飞", 26, p.text, true))
+	fmt_b.add_child(UI.label("规则：每行一条，先英文后中文，释义必须是中文；行首的 1. / - / • 等序号自动忽略；Day 5、Unit 2 这类标题行自动跳过；以「# 组名」开头的行是分组标题，其下词条按该组入库（可整段多组）；PDF/拍照常见的「两条挤一行」会自动拆开。内容不是单词表时（如录音稿、文章）会弹出格式提示，请改用「交给 AI 整理」。", 24, p.sub, true))
 	var paste := TextEdit.new()
 	paste.custom_minimum_size = Vector2(0, 240)
 	paste.placeholder_text = "长按或双击后，粘贴单词文本（每行：单词 中文释义）……"
@@ -361,20 +366,13 @@ func _ready() -> void:
 	var g_rb := _group("词库回滚与重置", false)
 	box.add_child(g_rb)
 	var rb_box: VBoxContainer = g_rb.get_meta("body")
-	rb_box.add_child(UI.label("每次 AI / 导入修改前自动备份", 24, p.sub, true))
-	var backups := DB.list_backups()
-	if backups.is_empty():
-		rb_box.add_child(UI.label("暂无备份", 26, p.sub))
-	else:
-		for fname in backups:
-			var rb := UI.button("回滚到 " + fname.trim_suffix(".json"), p.panel2, p.text, 26)
-			rb.pressed.connect(func():
-				var f := fname
-				UI.confirm_dialog(self, "回滚词库", "确定要回滚到该备份吗？当前自定义词库会被覆盖。",
-					func():
-						UI.toast(self, DB.rollback_backup(f))
-						_reload(), "回滚", "取消", true))
-			rb_box.add_child(rb)
+	rb_box.add_child(UI.label("每次 AI / 导入修改前自动备份。点按＝回滚，长按＝重命名 / 删除", 24, p.sub, true))
+	_rb_batch = false
+	_rb_sel.clear()
+	_rb_list = VBoxContainer.new()
+	_rb_list.add_theme_constant_override("separation", 10)
+	rb_box.add_child(_rb_list)
+	_rebuild_backup_list()
 	var wipe := UI.button("清除所有单词 / 词组（清空词库）", p.danger, Color.WHITE, 28)
 	wipe.pressed.connect(func():
 		UI.confirm_dialog(self, "清空词库",
@@ -430,6 +428,15 @@ func _preview_parse(paste: TextEdit, lbl: Label) -> void:
 		return
 	if n > 40000:
 		lbl.text = "已输入 %d 字：内容较长，点「本地整理导入」开始解析" % n
+		return
+	if DB.is_groups_md(text):
+		var groups := DB.parse_groups_md(text)
+		var gw := 0
+		var gp := 0
+		for g in groups:
+			gw += g["res"]["words"].size()
+			gp += g["res"]["phrases"].size()
+		lbl.text = "📑 分组/互传格式：%d 个分组（单词 %d · 词组 %d）→ 将按各自组名入库" % [groups.size(), gw, gp]
 		return
 	var res := DB.parse_import_text(text)
 	var group := DB.next_day_name()
@@ -518,6 +525,9 @@ func _pick_import_file(paste: TextEdit) -> void:
 					var stripped := t.strip_edges()
 					if stripped.begins_with("{") or stripped.begins_with("["):
 						UI.toast(self, "已读取 JSON 备份（显示在输入框），点「本地整理导入」恢复")
+					elif DB.is_groups_md(stripped):
+						var groups := DB.parse_groups_md(t)
+						UI.toast(self, "已读取分组/互传文件：识别 %d 个分组，点「本地整理导入」按组入库" % groups.size())
 					else:
 						var res := DB.parse_import_text(t)
 						UI.toast(self, "已显示在输入框：识别 %d 词 %d 词组，重复 %d 条" % [
@@ -535,6 +545,10 @@ func _local_import(paste: TextEdit) -> void:
 		if err == "":
 			paste.text = ""
 		return
+	# 「# 组名」分组格式（互传文件 / 手整分组词库）：按组名直接入库
+	if DB.is_groups_md(t):
+		_group_import_flow(paste)
+		return
 	var res := DB.parse_import_text(paste.text)
 	var total: int = res["words"].size() + res["phrases"].size()
 	if total == 0:
@@ -549,6 +563,56 @@ func _local_import(paste: TextEdit) -> void:
 		_show_format_hint(res, paste)
 		return
 	_show_local_preview(res, paste)
+
+## 分组 Markdown 导入（互传文件 / 手整「# 组名」词库）：列出分组清单，二选一并直接入库
+func _group_import_flow(paste: TextEdit) -> void:
+	var p := UI.palette()
+	var groups := DB.parse_groups_md(paste.text)
+	if groups.is_empty():
+		UI.toast(self, "没有识别到词条")
+		return
+	var w := 0
+	var ph := 0
+	var names := PackedStringArray()
+	for g in groups:
+		w += g["res"]["words"].size()
+		ph += g["res"]["phrases"].size()
+		names.append(String(g["name"]))
+	if w + ph == 0:
+		UI.toast(self, "识别到 %d 个分组，但里面没有词条" % groups.size())
+		return
+	var sh := UI.sheet(self, "识别到 %d 个分组（共 %d 词 · %d 词组）" % [groups.size(), w, ph], "", "取消")
+	var body: VBoxContainer = sh["body"]
+	var show := names.slice(0, 8)
+	var list_txt := "、".join(show)
+	if names.size() > 8:
+		list_txt += " 等 %d 组" % names.size()
+	body.add_child(UI.label("分组：" + list_txt, 26, p.sub, true))
+	var merge_btn := UI.button("➕ 扩展词汇（保留我现有的，只加没有的）", p.accent, Color.WHITE, 28)
+	merge_btn.custom_minimum_size = Vector2(0, 80)
+	merge_btn.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		_apply_group_import(paste, false))
+	body.add_child(merge_btn)
+	var over_btn := UI.button("🔁 覆盖原词汇（同名组的自定义词条先清空再写入）", p.panel2, p.danger, 28)
+	over_btn.custom_minimum_size = Vector2(0, 80)
+	over_btn.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		UI.confirm_dialog(self, "覆盖原词汇",
+			"同名分组里你自己加的词条会被替换，操作前有自动备份可回滚，确定吗？",
+			func(): _apply_group_import(paste, true),
+			"覆盖", "取消", true))
+	body.add_child(over_btn)
+
+func _apply_group_import(paste: TextEdit, overwrite: bool) -> void:
+	var res: Dictionary = DB.import_groups_md(paste.text, overwrite)
+	if res["err"] != "":
+		UI.toast(self, "导入失败：" + res["err"])
+		return
+	UI.toast(self, "✅ 入库 %d 个分组：单词 +%d、词组 +%d（%s）" % [
+		res["groups"], res["added_w"], res["added_p"],
+		"覆盖原词汇" if overwrite else "扩展词汇"])
+	paste.text = ""
 
 ## 识别率过低时的拦截提示：讲清可识别格式，留「仍要预览」出口
 func _show_format_hint(res: Dictionary, paste: TextEdit) -> void:
@@ -705,6 +769,134 @@ func _input_row(label_text: String, value: String, secret: bool, on_change: Call
 	vb.add_child(le)
 	card.set_meta("le", le)   # 预设按钮直接改输入框用
 	return card
+
+# ---------------- 备份列表：点按回滚 / 长按菜单 / 批量管理 ----------------
+## 重建备份列表（普通模式=回滚行；批量模式=勾选行+删除按钮）
+func _rebuild_backup_list() -> void:
+	if _rb_list == null or not is_instance_valid(_rb_list):
+		return
+	for c in _rb_list.get_children():
+		c.queue_free()
+	var p := UI.palette()
+	var backups := DB.list_backups()
+	if backups.is_empty():
+		_rb_batch = false
+		_rb_sel.clear()
+		_rb_list.add_child(UI.label("暂无备份", 26, p.sub))
+		return
+	var toggle := UI.button("✓ 完成" if _rb_batch else "☑ 批量管理备份", p.panel2, p.text, 26)
+	toggle.pressed.connect(func():
+		_rb_batch = not _rb_batch
+		_rb_sel.clear()
+		_rebuild_backup_list())
+	_rb_list.add_child(toggle)
+	for fname in backups:
+		if _rb_batch:
+			var row := UI.check_row(DB.get_backup_label(fname), _rb_sel.get(fname, false), p.text, 26)
+			row.toggled.connect(func(o: bool): _rb_sel[fname] = o)
+			_rb_list.add_child(row)
+		else:
+			_rb_list.add_child(_make_backup_row(fname))
+	if _rb_batch:
+		var del := UI.button("🗑 删除选中的备份", p.danger, Color.WHITE, 28)
+		del.pressed.connect(func():
+			var picked := PackedStringArray()
+			for f in backups:
+				if _rb_sel.get(f, false):
+					picked.append(f)
+			if picked.is_empty():
+				UI.toast(self, "先勾选要删除的备份")
+				return
+			UI.confirm_dialog(self, "删除备份",
+				"将删除 %d 份备份，删除后不能再回滚到它们，确定吗？" % picked.size(),
+				func():
+					var n := DB.delete_backups(picked)
+					UI.toast(self, "已删除 %d 份备份" % n)
+					_rb_sel.clear()
+					_rebuild_backup_list(),
+				"删除", "取消", true))
+		_rb_list.add_child(del)
+
+## 单条备份行：不连 pressed，全部走 gui_input——短按回滚（带确认），长按 550ms 出菜单，拖动 30px 取消（与主页卡片同一套触控逻辑）
+func _make_backup_row(fname: String) -> Button:
+	var p := UI.palette()
+	var b := UI.button("回滚到 " + DB.get_backup_label(fname), p.panel2, p.text, 26)
+	var st := {"msec": 0, "pos": Vector2.ZERO}   # 字典是引用类型，规避 lambda 按值快照
+	b.gui_input.connect(func(ev: InputEvent):
+		if ev is InputEventScreenTouch or ev is InputEventMouseButton:
+			if ev.pressed:
+				st["msec"] = Time.get_ticks_msec()
+				st["pos"] = ev.position
+			elif st["msec"] > 0:
+				var held: int = Time.get_ticks_msec() - st["msec"]
+				st["msec"] = 0
+				if held >= 550:
+					_backup_menu(fname)
+				else:
+					UI.confirm_dialog(self, "回滚词库",
+						"确定要回滚到「%s」吗？当前自定义词库会被覆盖。" % DB.get_backup_label(fname),
+						func():
+							UI.toast(self, DB.rollback_backup(fname))
+							_reload(),
+						"回滚", "取消", true)
+		elif (ev is InputEventScreenDrag or ev is InputEventMouseMotion) and st["msec"] > 0:
+			if ev.position.distance_to(st["pos"]) > 30.0:
+				st["msec"] = 0)
+	return b
+
+## 备份长按菜单：重命名 / 回滚 / 删除
+func _backup_menu(fname: String) -> void:
+	UI.vibrate(40)
+	var p := UI.palette()
+	var lab := DB.get_backup_label(fname)
+	var sh: Dictionary = UI.sheet(self, "备份「%s」" % lab, "", "关闭")
+	var body: VBoxContainer = sh["body"]
+	var rn := UI.button("✏️ 重命名备份", p.panel2, p.text, 29)
+	rn.custom_minimum_size = Vector2(0, 80)
+	rn.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		_backup_rename_dialog(fname))
+	body.add_child(rn)
+	var rb := UI.button("⏪ 回滚到此备份", p.panel2, p.text, 29)
+	rb.custom_minimum_size = Vector2(0, 80)
+	rb.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		UI.confirm_dialog(self, "回滚词库",
+			"确定要回滚到「%s」吗？当前自定义词库会被覆盖。" % lab,
+			func():
+				UI.toast(self, DB.rollback_backup(fname))
+				_reload(),
+			"回滚", "取消", true))
+	body.add_child(rb)
+	var del := UI.button("🗑 删除备份", p.panel2, p.danger, 29)
+	del.custom_minimum_size = Vector2(0, 80)
+	del.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		UI.confirm_dialog(self, "删除备份",
+			"将删除备份「%s」，删除后不能再回滚到它，确定吗？" % lab,
+			func():
+				var err := DB.delete_backup(fname)
+				UI.toast(self, err if err != "" else "已删除备份")
+				_rebuild_backup_list(),
+			"删除", "取消", true))
+	body.add_child(del)
+
+## 备份重命名弹窗（清空输入 = 恢复默认时间名）
+func _backup_rename_dialog(fname: String) -> void:
+	var p := UI.palette()
+	var le := LineEdit.new()
+	le.text = DB.get_backup_label(fname)
+	le.custom_minimum_size = Vector2(0, 76)
+	le.add_theme_font_size_override("font_size", 30)
+	var sh := UI.sheet(self, "重命名备份", "保存", "取消", func():
+		var err := DB.rename_backup(fname, le.text)
+		if err != "":
+			UI.toast(self, err)
+		else:
+			UI.toast(self, "已重命名为「%s」" % le.text.strip_edges())
+		_rebuild_backup_list())
+	sh["body"].add_child(UI.label("留空则恢复默认的时间名称", 24, p.sub))
+	sh["body"].add_child(le)
 
 func _reload() -> void:
 	get_tree().reload_current_scene()

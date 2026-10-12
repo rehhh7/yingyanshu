@@ -1,25 +1,26 @@
-extends SceneTree
+extends Node
 ## 截图验收：依次渲染各页面保存 PNG 到 _shots/
+## 运行：godot --path . scenes/test_shots.tscn --resolution 540x1152（不能用 -s：全局类编译早于 autoload 注册，DB 标识符解析失败）
 
 const OUT := "C:/Users/s/Desktop/英语/_shots/"
 
-func _initialize() -> void:
+func _ready() -> void:
 	call_deferred("run")
 
 func snap(name: String) -> void:
-	await process_frame
-	await process_frame
-	await process_frame
-	var img := root.get_texture().get_image()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var img := get_tree().root.get_texture().get_image()
 	img.save_png(OUT + name + ".png")
 	print("shot " + name)
 
 func run() -> void:
 	DirAccess.make_dir_recursive_absolute(OUT)
 	var main = load("res://scenes/main.tscn").instantiate()
-	root.add_child(main)
-	await process_frame
-	await process_frame
+	get_tree().root.add_child(main)
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 	for i in range(5):
 		main.switch_tab(i)
@@ -27,8 +28,8 @@ func run() -> void:
 
 	# 词表模式
 	main.switch_tab(0)
-	await process_frame
-	await process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
 	var home = main.content.get_child(main.content.get_child_count() - 1)
 	home._on_seg("table")
 	await snap("home_table")
@@ -36,16 +37,16 @@ func run() -> void:
 	# 搜索：先抓拍「正在整理单词」转圈遮罩，再抓结果列表
 	home._on_search("ab")
 	await snap("search_loading")
-	await create_timer(0.8).timeout
+	await get_tree().create_timer(0.8).timeout
 	await snap("search_results")
 	home._on_search("")
-	await create_timer(0.5).timeout
+	await get_tree().create_timer(0.5).timeout
 
 	# 学习卡片 正面/背面
 	main.open_study("words", "手写一")
 	await snap("study_card_front")
 	main.overlay._flip()
-	await create_timer(0.4).timeout   # 等翻面淡入淡出动画播完再截
+	await get_tree().create_timer(0.4).timeout   # 等翻面淡入淡出动画播完再截
 	await snap("study_card_back")
 	main.overlay._toggle_mode()
 	await snap("study_list")
@@ -63,8 +64,8 @@ func run() -> void:
 
 	# AI 页：注入假消息看气泡排版（含思考链折叠块）
 	main.switch_tab(3)
-	await process_frame
-	await process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
 	var ai = main.content.get_child(main.content.get_child_count() - 1)
 	ai.session["messages"] = [
 		{"role": "user", "content": "给生词组配近义词"},
@@ -75,14 +76,14 @@ func run() -> void:
 	await snap("ai_chat")
 
 	# 浅色主题（米白）
-	var db = root.get_node("DB")
+	var db = get_tree().root.get_node("DB")
 	db.settings["theme_dark"] = false
 	db.save_settings()
 	main.queue_free()
 	var main2 = load("res://scenes/main.tscn").instantiate()
-	root.add_child(main2)
-	await process_frame
-	await process_frame
+	get_tree().root.add_child(main2)
+	await get_tree().process_frame
+	await get_tree().process_frame
 	main2.switch_tab(0)
 	await snap("light_home")
 	main2.switch_tab(4)
@@ -91,15 +92,15 @@ func run() -> void:
 	# 横屏适配：多列网格 + 学习卡片横排
 	db.settings["theme_dark"] = true
 	db.save_settings()
-	root.size = Vector2i(1152, 540)
-	await process_frame
-	await process_frame
+	get_tree().root.size = Vector2i(1152, 540)
+	await get_tree().process_frame
+	await get_tree().process_frame
 	main2.queue_free()
 	var main3 = load("res://scenes/main.tscn").instantiate()
-	root.add_child(main3)
-	await process_frame
-	await process_frame
-	await process_frame
+	get_tree().root.add_child(main3)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
 	main3.switch_tab(0)
 	await snap("land_home")
 	main3.open_study("words", "手写一")
@@ -108,20 +109,76 @@ func run() -> void:
 	main3.switch_tab(4)
 	await snap("land_settings")
 
-	# 主题切换过渡验收：截图滑开 + 粒子（中段应看到旧画面半滑开，无黑白闪帧）
-	main3._on_theme_toggle()
-	await snap("theme_transition")
-	await create_timer(1.0).timeout
-	await snap("theme_done")
+	# 主题切换过渡动画会 reload_current_scene（本测试场景也会被重载 → 脚本重跑），
+	# 场景模式下无法验收过渡动画，跳过（过渡动画此前已人工验收）
 
 	# iOS 风格退出确认弹窗
-	var main4 = null
-	for c in root.get_children():
-		if c.has_method("_handle_back"):
-			main4 = c
-	if main4 != null:
-		main4._handle_back()
-		await snap("exit_dialog")
+	var main4 = main3
+	main4._handle_back()
+	await snap("exit_dialog")
+
+	# ============ v0.9.18 新增功能验收 ============
+	# 关掉退出确认弹窗
+	for c in get_tree().root.get_children():
+		if c.is_in_group("ui_dialog"):
+			UI.dismiss_dialog(c)
+	await get_tree().process_frame
+	# 互传弹窗：验证居中（修复挂进 VBox 被挤到底部的 bug）
+	main4.switch_tab(4)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	LanSyncDialog.open(main4)
+	await snap("lansync_centered")
+	for c in get_tree().root.get_children():
+		if c is LanSyncDialog:
+			c._close()
+	await get_tree().process_frame
+	# 设置页：备份列表（点按回滚/长按菜单/批量管理）——滚到底部让回滚区可见
+	var settings = main4.content.get_child(main4.content.get_child_count() - 1)
+	var db2 = get_tree().root.get_node("DB")
+	db2.backup_libraries("截图验收测试备份")
+	settings._rebuild_backup_list()
+	var sc: ScrollContainer = null
+	for c in settings.get_children():
+		if c is ScrollContainer:
+			sc = c
+	# 展开「词库回滚与重置」折叠组（截图用：直接把 body 设为可见）
+	settings._rb_list.get_parent().visible = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if sc != null:
+		sc.scroll_vertical = 999999
+	await get_tree().process_frame
+	await snap("settings_backups")
+	# 批量管理模式
+	settings._rb_batch = true
+	settings._rebuild_backup_list()
+	await get_tree().process_frame
+	if sc != null:
+		sc.scroll_vertical = 999999
+	await get_tree().process_frame
+	await snap("settings_backups_batch")
+	settings._rb_batch = false
+	settings._rebuild_backup_list()
+	# 备份长按菜单（sheet 弹窗）
+	settings._backup_menu(db2.list_backups()[0])
+	await snap("backup_menu")
+	for c in get_tree().root.get_children():
+		if c.is_in_group("ui_dialog"):
+			UI.dismiss_dialog(c)
+	await get_tree().process_frame
+	# 本地导入：分组/互传 Markdown 的选择弹窗（扩展/覆盖二选一）
+	var demo_md := "# 英眼书互传\n\n# 验收组A\nzzshotapple /æ/ n. 截图苹果\nzzshot banana 截图香蕉组\n\n# 验收组B\nzzshotcat /kæt/ n. 截图猫\n"
+	var tmp := TextEdit.new()
+	get_tree().root.add_child(tmp)
+	tmp.text = demo_md
+	settings._group_import_flow(tmp)
+	await snap("group_import_sheet")
+	for c in get_tree().root.get_children():
+		if c.is_in_group("ui_dialog"):
+			UI.dismiss_dialog(c)
+	tmp.queue_free()
+	await get_tree().process_frame
 
 	print("== 截图完成 ==")
-	quit()
+	get_tree().quit()

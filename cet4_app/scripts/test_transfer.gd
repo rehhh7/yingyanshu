@@ -62,5 +62,26 @@ func run() -> void:
 		if String(w.get("w", "")) == "zztestapple":
 			leftover = true
 	check("删组后词条清空", not leftover)
+	# 分组格式检测
+	check("is_groups_md 识别标记头", DB.is_groups_md("# 英眼书互传\n\n# 组A\napple 苹果\n"))
+	check("is_groups_md 识别普通组头", DB.is_groups_md("前置说明\n# 组A\napple 苹果\n"))
+	check("is_groups_md 不误判纯文本", not DB.is_groups_md("apple 苹果\nbanana 香蕉\n"))
+	check("is_groups_md 不误判井号词", not DB.is_groups_md("#tag 标签词\n"))
+	check("is_groups_md 不误判JSON", not DB.is_groups_md("{\"type\":\"cet4_backup\"}"))
+	# 备份重命名 / 删除 / 批量删除（import_groups_md 每次都自动备份，此刻必有备份）
+	var backups: PackedStringArray = DB.list_backups()
+	check("有备份可管理", backups.size() >= 1)
+	if backups.size() >= 2:
+		var f1 := String(backups[0])
+		var f2 := String(backups[1])
+		check("默认显示名=时间名", DB.get_backup_label(f1) == f1.trim_suffix(".json"))
+		check("重命名成功", DB.rename_backup(f1, "我的存档点") == "")
+		check("显示名变标签", DB.get_backup_label(f1) == "我的存档点")
+		check("清名恢复时间名", DB.rename_backup(f1, "") == "" and DB.get_backup_label(f1) == f1.trim_suffix(".json"))
+		check("单个删除", DB.delete_backup(f2) == "" and not DB.list_backups().has(f2))
+		var before: int = DB.list_backups().size()
+		var picked := PackedStringArray([f1, "不存在的文件.json"])
+		check("批量删除只删存在的", DB.delete_backups(picked) == 1)
+		check("批量后总数-1", DB.list_backups().size() == before - 1)
 	print("== 传输格式测试完成 fails=%d ==" % fails)
 	quit(1 if fails > 0 else 0)

@@ -23,22 +23,26 @@ var pending_img_name := ""
 var img_row: HBoxContainer
 var img_lbl: Label
 
-const SYS_PROMPT := """你是由 API 提供商（例如 DeepSeek）提供的 AI 模型，运行在背单词应用「英眼书」内。用户是学生，正在背四级单词和听力词组。
+## 通用学习 prompt：按设置里的「学习语言」生成，英/日/韩/法/德等语言通用
+static func _sys_prompt() -> String:
+	var lang: String = DB.study_lang()
+	return """你是由 API 提供商（例如 DeepSeek）提供的 AI 模型，运行在背单词应用「英眼书」内。用户是学生，正在学习{LANG}，用本软件背{LANG}单词和词组。
 规则：
 1. 用中文回答，简洁清晰。
 2. 用户可能附带了他的学习数据（生词/统计/词库），回答要基于这些数据。
 3. 用户附加的文件内容会放在【附加文件内容】一节——你可以直接阅读它的全部文字，按用户要求分析、整理、提取单词，不要说"无法读取文件"。
 4. 如果用户要求修改词库（添加/删除单词或词组），必须只输出如下 JSON（放在 ```json 代码块中），不要输出其他内容：
-{"add_words":[{"w":"单词","p":"音标","m":"词性+中文释义","day":"自定义","syn":[],"sim":[]}],
- "add_phrases":[{"sec":"自定义","en":"英文词组","cn":"中文释义"}],
- "remove_words":["要删的单词"],"remove_phrases":["要删的词组英文"]}
+{"add_words":[{"w":"单词","p":"读音标注","m":"词性+中文释义","day":"自定义","syn":[],"sim":[]}],
+ "add_phrases":[{"sec":"自定义","en":"词组原文","cn":"中文释义"}],
+ "remove_words":["要删的单词"],"remove_phrases":["要删的词组原文"]}
 不需要的字段可以省略。App 会解析这个 JSON 并让用户逐条确认后才写入。
 5. 整理新单词/词组入库时的硬性规则：
    - 查重：先对照用户现有词库，已经存在的单词/词组不要写入 JSON，在正文里列出"以下已存在，已跳过：……"
-   - 拼写检查：逐个检查英文拼写，疑似拼写错误或不存在的词不要写入 JSON，在正文里逐条提示用户核对（例如：❌ enviroment → 是否为 environment？）
+   - 拼写检查：逐个检查原文拼写，疑似拼写错误或不存在的词不要写入 JSON，在正文里逐条提示用户核对
+   - 读音标注 p 字段按语言处理：英语填国际音标（如 /tɛst/），日语填假名读音，其他语言填常用读音标注；拿不准就留空
    - 分组：新单词的 day 字段统一填用户指定的新分组（如 Day 22）；新词组的 sec 字段同理；用户没指定时用上下文里给出的新分组名
 6. 长期记忆：当你了解到值得长期记住的用户信息（学习目标、偏好、薄弱点、正在进行的学习计划等），在回复末尾附加一个 ```json 代码块：{"memory_add":["记忆内容，每条一句话"]}；用户要求忘掉某事时输出 {"memory_remove":["要删除的记忆原文"]}。记忆会永久保存，之后每次对话都会自动携带，只记真正有用的，不要记闲聊和临时内容。
-7. 除修改词库和记忆操作外，其他回答不要用 JSON 格式。"""
+7. 除修改词库和记忆操作外，其他回答不要用 JSON 格式。""".replace("{LANG}", lang)
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 10)
@@ -254,7 +258,7 @@ func _build_quick() -> void:
 	# 固定首位：拍照识图导入（选图后自动填整理指令，点发送即可）
 	var vq := UI.button("📷 识图导入", p.accent, Color.WHITE, 24)
 	vq.custom_minimum_size = Vector2(0, 64)
-	vq.pressed.connect(func(): _pick_image("把这张图片里的单词/词组整理成词库（注意查重、拼写检查，新单词放到新的 Day 分组）"))
+	vq.pressed.connect(func(): _pick_image("把这张图片里的%s单词/词组整理成词库（注意查重、拼写检查，新单词放到新的 Day 分组）" % DB.study_lang()))
 	quick_container.add_child(vq)
 	for qp in DB.settings.get("quick_prompts", []):
 		var b := UI.button(String(qp.name), p.panel2, p.text, 24)
@@ -545,11 +549,11 @@ func _send() -> void:
 	# 大文件防爆上下文：整理类任务 + 附加文件超 1 万字 → 分批顺序发送，汇总后统一确认
 	if img == "" and _is_organize_intent(text) and attached_file_text.length() > 10000:
 		var digest := _library_digest() if not ctx_checks["words"].button_pressed else ""
-		var sys_b := SYS_PROMPT + "\n\n以下是用户本次携带的数据：\n" + digest
+		var sys_b := _sys_prompt() + "\n\n以下是用户本次携带的数据：\n" + digest
 		AI.start_batch(String(session.id), sys_b, text, _split_chunks(attached_file_text, 7000))
 		return
 
-	var sys := SYS_PROMPT
+	var sys := _sys_prompt()
 	var ctx := _context_text()
 	# 涉及整理/导入时自动附词库摘要（查重 + 新 Day 分组），未勾选单词库时才补
 	if _needs_library_context(text) and not ctx_checks["words"].button_pressed:

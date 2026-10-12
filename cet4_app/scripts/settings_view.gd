@@ -229,6 +229,24 @@ func _ready() -> void:
 	var g_ai := _group("AI API", false)
 	box.add_child(g_ai)
 	var ai_box: VBoxContainer = g_ai.get_meta("body")
+	# 学习语言：AI 整理/识图的 prompt 按此切换（英/日/韩/法/德…通用）
+	var lang_card := _input_row("学习语言（AI 整理/识图按此语言）", String(DB.settings.get("study_lang", "英语")), false,
+		func(t: String): DB.settings["study_lang"] = t.strip_edges())
+	ai_box.add_child(lang_card)
+	var lang_flow := HFlowContainer.new()
+	lang_flow.add_theme_constant_override("h_separation", 10)
+	lang_flow.add_theme_constant_override("v_separation", 10)
+	ai_box.add_child(lang_flow)
+	for lg in ["英语", "日语", "韩语", "法语", "德语", "西班牙语"]:
+		var lb := UI.button(lg, p.panel2, p.text, 24)
+		lb.custom_minimum_size = Vector2(0, 68)
+		lang_flow.add_child(lb)
+		lb.pressed.connect(func():
+			var l: String = lb.text
+			DB.settings["study_lang"] = l
+			DB.save_settings()
+			(lang_card.get_meta("le") as LineEdit).text = l
+			UI.toast(self, "学习语言已设为「%s」" % l))
 	ai_box.add_child(_input_row("API Key", String(DB.settings.get("api_key", "")), true,
 		func(t: String): DB.settings["api_key"] = t.strip_edges()))
 	var base_card := _input_row("接口地址", String(DB.settings.get("api_base", "https://api.deepseek.com")), false,
@@ -534,7 +552,7 @@ func _recognize_image(path: String, paste: TextEdit, parse_lbl: Label) -> void:
 		UI.toast(self, "图片读取失败")
 		return
 	parse_lbl.text = "📷 AI 识图中（几秒到十几秒）……"
-	var prompt := "这张图里是一份英语单词/词组表。请把里面的词条完整提取成纯文本，每行一条：\n单词行格式：单词 音标（图里有就写，没有就省略） 词性+中文释义\n词组行格式：词组 = 中文释义\n要求：按图中顺序、一条不漏、不要解释、不要输出其他任何内容。"
+	var prompt := "这张图里是一份%s单词/词组表。请把里面的词条完整提取成纯文本，每行一条：\n单词行格式：单词 读音标注（图里有就写，没有就省略；英语写音标、日语写假名） 词性+中文释义\n词组行格式：词组 = 中文释义\n要求：按图中顺序、一条不漏、不要解释、不要输出其他任何内容。" % DB.study_lang()
 	var err_box := [""]
 	var reply: String = await AI.request_vision(prompt, data_url, err_box)
 	if not is_inside_tree():

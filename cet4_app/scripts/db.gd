@@ -15,7 +15,7 @@ const MEMORY_PATH := "user://ai_memory.json"
 const BACKUP_DIR := "user://backups"
 const EXPORT_DIR := "user://exports"
 
-const VERSION := "0.9.23"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
+const VERSION := "0.9.24"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
 
 ## 读取内置更新日志；only_latest=true 时只取最新一个版本的段落
 static func changelog_text(only_latest := false) -> String:
@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS := {
 	"api_base": "https://api.deepseek.com",
 	"api_key": "",
 	"api_model": "deepseek-v4-flash",
+	"study_lang": "英语",
 	"quick_prompts": [
 		{"name": "配近义词/形近词", "prompt": "请为我的生词组里的每个单词配上 1~2 个近义词和 1 个形近词，并各给一句中文辨析。用中文回答。"},
 		{"name": "整理文本成词库", "prompt": "请把下面这段文本整理成词库 JSON。格式为 {\"add_words\":[{\"w\":\"单词\",\"p\":\"音标\",\"m\":\"词性+中文释义\",\"day\":\"自定义\",\"syn\":[],\"sim\":[]}],\"add_phrases\":[{\"sec\":\"自定义\",\"en\":\"英文词组\",\"cn\":\"中文释义\"}]}。只输出 JSON，不要输出其他内容。文本如下：\n"},
@@ -84,6 +85,11 @@ func load_settings() -> void:
 func save_settings() -> void:
 	_write_json(SETTINGS_PATH, settings)
 	settings_changed.emit()
+
+## 当前学习语言：AI 整理/识图的 prompt 按此切换（默认英语；清空时回退英语）
+func study_lang() -> String:
+	var l := String(settings.get("study_lang", "英语")).strip_edges()
+	return l if l != "" else "英语"
 
 # ---------------- 词库 ----------------
 func load_builtin() -> void:

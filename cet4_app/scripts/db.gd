@@ -15,7 +15,7 @@ const MEMORY_PATH := "user://ai_memory.json"
 const BACKUP_DIR := "user://backups"
 const EXPORT_DIR := "user://exports"
 
-const VERSION := "0.9.15"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
+const VERSION := "0.9.16"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
 
 ## 读取内置更新日志；only_latest=true 时只取最新一个版本的段落
 static func changelog_text(only_latest := false) -> String:
@@ -556,6 +556,8 @@ static func _is_pos_tag(t: String) -> bool:
 	return ["v", "n", "adj", "adv", "vt", "vi", "prep", "conj", "pron", "num", "art", "abbr", "int", "aux", "phr"].has(s)
 
 ## 本地整理导入文本（不联网）：逐行解析为单词/词组，自动查重、挑出无法识别的行
+## 支持格式：自由文本（音标/词性/序号/项目符号）、TSV 分列、ECDICT 风格 CSV（GitHub 主流词库格式）、
+## JSONL（每行一个 JSON）、PDF 双栏合并行自动拆分
 ## 返回 {words:[{w,p,m,day,syn,sim}], phrases:[{en,cn,sec}], unknown:[String], dup:[String]}
 func parse_import_text(text: String) -> Dictionary:
 	var out := {"words": [], "phrases": [], "unknown": [], "dup": []}
@@ -575,16 +577,109 @@ func parse_import_text(text: String) -> Dictionary:
 	re_head.compile("^([Dd][Aa][Yy]|[Uu][Nn][Ii][Tt]|[Ll][Ii][Ss][Tt]|[Ss][Ee][Cc][Tt][Ii][Oo][Nn]|[Pp][Aa][Rr][Tt])\\s*\\d+$")
 	var re_word := RegEx.new()
 	re_word.compile("^[A-Za-z][A-Za-z\\-']*$")
-	var re_wph := RegEx.new()   # 单词和音标连写：abandon/əˈbændən/
-	re_wph.compile("^([A-Za-z][A-Za-z\\-']*)(/[^/]+/)$")
+	var re_phon := RegEx.new()   # 音标块整体：/…/ 或 […] 或 【…】（允许内部空格）
+	re_phon.compile("(/[^/\\s][^/]*/|\\[[^\\]]+\\]|【[^】]+】)")
+	var re_cnpre := RegEx.new()  # 释义前的口音标记：美 / 英
+	re_cnpre.compile("^(美|英)\\s+")
+	# 收录单词/词组的小闭包（统一查重 + 释义必须含中文，否则进 unknown）
+	var push_word := func(wtxt: String, phon: String, meaning: String) -> void:
+		var id := wtxt.to_lower()
+		if existing_w.has(id):
+			if not out["dup"].has(wtxt):
+				out["dup"].append(wtxt)
+			return
+		if meaning == "" or not _has_cjk(meaning):
+			out["unknown"].append(wtxt + "（无释义，请核对）")
+			return
+		out["words"].append({"w": wtxt, "p": phon, "m": meaning, "day": day, "syn": [], "sim": []})
+		existing_w[id] = true
+	var push_phrase := func(en: String, cn: String) -> void:
+		var pid := en.to_lower().strip_edges()
+		if existing_p.has(pid):
+			if not out["dup"].has(en):
+				out["dup"].append(en)
+			return
+		if cn == "" or not _has_cjk(cn):
+			out["unknown"].append(en + "（无释义，请核对）")
+			return
+		out["phrases"].append({"en": en, "cn": cn, "sec": day})
+		existing_p[pid] = true
 	for raw in text.split("\n", false):
-		var line := String(raw).replace("\t", " ").replace("　", " ").strip_edges()   # 制表符/全角空格当空格，避免整行误判
+		var raw_s := String(raw)
+		var line := raw_s.replace("　", " ").strip_edges()   # 全角空格当空格
 		if line == "" or line.begins_with("#") or line.begins_with("//"):
 			continue
+		# ---- JSONL：每行一个 JSON 对象（Anki/词典脚本导出常见）----
+		if line.begins_with("{"):
+			var d = JSON.parse_string(line)
+			if d is Dictionary:
+				var jw := String(d.get("word", d.get("w", ""))).strip_edges()
+				var jen := String(d.get("en", d.get("phrase", ""))).strip_edges()
+				var jp := String(d.get("phonetic", d.get("p", ""))).strip_edges()
+				var jm := String(d.get("translation", d.get("m", d.get("cn", d.get("meaning", ""))))).strip_edges()
+				if jw != "":
+					push_word.call(jw, jp, jm)
+				elif jen != "":
+					push_phrase.call(jen, jm)
+				else:
+					out["unknown"].append(line.left(60))
+				continue
+			# 花括号开头但不是合法 JSON → 按普通文本继续
+		# ---- TSV：制表符分列（Excel / Anki / 网页表格粘贴常见）----
+		if raw_s.contains("\t"):
+			var cols := raw_s.split("\t", false)
+			var first := String(cols[0]).strip_edges()
+			first = re_bullet.sub(re_num.sub(first, "", true), "", true).strip_edges()
+			var phon_t := ""
+			var cn_t := ""
+			for i in range(1, cols.size()):
+				var c := String(cols[i]).strip_edges().trim_prefix("\"").trim_suffix("\"")
+				if c == "":
+					continue
+				if phon_t == "" and _is_phonetic_block(c):
+					phon_t = c
+					continue
+				if cn_t == "" and _has_cjk(c):
+					cn_t = c
+			if first != "" and re_word.search(first) != null:
+				push_word.call(first, phon_t, cn_t)
+				continue
+			if first.split(" ", false).size() >= 2 and re_word.search(first.split(" ", false)[0]) != null:
+				push_phrase.call(first, cn_t)
+				continue
+			# 首列不像英文 → 按普通文本继续
+		# ---- CSV：ECDICT 风格 word,phonetic,definition,translation,...（GitHub 主流词库格式）----
+		if line.count(",") >= 2 or (line.count(",") >= 1 and line.contains("\"")):
+			var cols2 := line.split(",", false)
+			if cols2.size() >= 2:
+				var c0 := String(cols2[0]).strip_edges().trim_prefix("\"").trim_suffix("\"")
+				if re_word.search(c0) != null:
+					var phon_c := ""
+					var cn_c := ""
+					for i in range(1, cols2.size()):
+						var c := String(cols2[i]).strip_edges().trim_prefix("\"").trim_suffix("\"")
+						if c == "":
+							continue
+						if phon_c == "" and _is_phonetic_block(c):
+							phon_c = c
+							continue
+						if cn_c == "" and _has_cjk(c):
+							cn_c = c
+					if cn_c != "" or phon_c != "":
+						push_word.call(c0, phon_c, cn_c)
+						continue
+		# ---- 自由文本 ----
+		line = line.replace("\t", " ")
 		line = re_num.sub(line, "", true)
 		line = re_bullet.sub(line, "", true).strip_edges()
 		if line == "" or re_head.search(line) != null:
 			continue   # 跳过 "Day 5" 之类的标题行
+		# 音标块整体提取（在切中文之前，允许音标内部带空格）
+		var phon := ""
+		var pm := re_phon.search(line)
+		if pm != null:
+			phon = pm.get_string(1)
+			line = (line.substr(0, pm.get_start(1)) + " " + line.substr(pm.get_end(1))).strip_edges()
 		# 找第一个中文字符，把行切成「英文部分 + 中文释义」
 		var cut := -1
 		for i in line.length():
@@ -600,73 +695,93 @@ func parse_import_text(text: String) -> Dictionary:
 		if cut > 0:
 			en_part = line.substr(0, cut).strip_edges()
 			cn_part = line.substr(cut).strip_edges()
+		# 释义开头的「美/英 + 音标」标记剥掉（如：tomato /x/ 美 /y/ 西红柿）
+		while true:
+			var before := cn_part
+			cn_part = re_cnpre.sub(cn_part, "", true).strip_edges()
+			var cm := re_phon.search(cn_part)
+			if cm != null and cm.get_start(1) == 0:
+				cn_part = cn_part.substr(cm.get_end(1)).strip_edges()
+			if cn_part == before:
+				break
 		# 英文部分尾部的分隔标点清理掉（= ＝ — – ~ ～ 、 · 等手写常见分隔符）
 		while en_part.length() > 0 and [":", "：", "-", "—", "–", ",", "，", "|", "；", ";", "=", "＝", "~", "～", "、", "·"].has(en_part.right(1)):
 			en_part = en_part.left(en_part.length() - 1).strip_edges()
 		if en_part == "":
 			continue
 		var tokens := en_part.split(" ", false)
-		if tokens.is_empty() or (re_word.search(tokens[0]) == null and re_wph.search(tokens[0]) == null):
-			out["unknown"].append(line)   # 首段不是英文单词开头（音标/词性孤立行等）
+		if tokens.is_empty() or re_word.search(tokens[0]) == null:
+			out["unknown"].append(line)   # 首段不是英文单词开头（词性孤立行等）
 			continue
-		var is_word := tokens.size() == 1
-		var phon := ""
-		var pos_prefix := ""
-		var m0 := re_wph.search(tokens[0])
-		if m0 != null:
-			# 单词和音标连写："abandon/əˈbændən/ vt. 放弃"
-			is_word = true
-			phon = m0.get_string(2)
-			tokens[0] = m0.get_string(1)
-			if tokens.size() >= 2 and _is_pos_tag(tokens[1]):
-				pos_prefix = tokens[1] + " "
-		elif not is_word and tokens.size() >= 2 and (tokens[1].begins_with("/") or (tokens[1].begins_with("[") and tokens[1].ends_with("]"))):
-			# 形如 "abandon /əˈbændən/ vt. 放弃" 或 "abandon [əˈbændən] vt. 放弃"：第二段是音标
-			is_word = true
-			phon = tokens[1]
-			if tokens.size() >= 3 and _is_pos_tag(tokens[2]):
-				pos_prefix = tokens[2] + " "
-			elif tokens.size() >= 3:
-				is_word = false   # 音标后面还有别的内容，不像词条
-		elif not is_word and tokens.size() == 2 and _is_pos_tag(tokens[1]):
-			# 形如 "abandon vt. 放弃"：第二段是词性
-			is_word = true
-			pos_prefix = tokens[1] + " "
-		if is_word:
-			var w := String(tokens[0])
-			var id := w.to_lower()
-			if existing_w.has(id):
-				if not out["dup"].has(w):
-					out["dup"].append(w)
-				continue
-			if cn_part == "":
-				out["unknown"].append(w + "（无释义，请核对）")
-				continue
-			out["words"].append({"w": w, "p": phon, "m": pos_prefix + cn_part, "day": day, "syn": [], "sim": []})
-			existing_w[id] = true
+		# 词性序列：词后连续的词性缩写（可多个、& 连接）并入释义前缀
+		var pos_parts: Array = []
+		var ti := 1
+		while ti < tokens.size() and (_is_pos_tag(tokens[ti]) or tokens[ti] == "&"):
+			if _is_pos_tag(tokens[ti]):
+				pos_parts.append(tokens[ti])
+			ti += 1
+		if ti == tokens.size():
+			# 单词词条
+			var w0 := String(tokens[0])
+			var prefix := (" ".join(pos_parts) + " ") if not pos_parts.is_empty() else ""
+			# PDF/拍照双栏合并行：释义里藏着「英文词 + 中文」尾巴 → 自动拆成两条
+			var sp := _split_merged_row(cn_part, re_word)
+			if sp.is_empty():
+				push_word.call(w0, phon, prefix + cn_part)
+			else:
+				push_word.call(w0, phon, prefix + String(sp[0]))
+				push_word.call(String(sp[1]), "", String(sp[2]))
 		else:
-			var pid := en_part.to_lower()
-			if existing_p.has(pid):
-				if not out["dup"].has(en_part):
-					out["dup"].append(en_part)
-				continue
-			if cn_part == "":
-				out["unknown"].append(en_part + "（无释义，请核对）")
-				continue
-			out["phrases"].append({"en": en_part, "cn": cn_part, "sec": day})
-			existing_p[pid] = true
+			# 词组
+			push_phrase.call(en_part, cn_part)
 	return out
 
-func export_all() -> String:
-	DirAccess.make_dir_recursive_absolute(EXPORT_DIR)
-	var fname := "backup_%s.json" % Time.get_datetime_string_from_system().replace(":", "-")
-	var payload := {
+static func _has_cjk(s: String) -> bool:
+	for i in s.length():
+		var c := s.unicode_at(i)
+		if c >= 0x4E00 and c <= 0x9FFF:
+			return true
+	return false
+
+static func _is_phonetic_block(c: String) -> bool:
+	if c.length() < 2:
+		return false
+	var a := c.left(1)
+	var b := c.right(1)
+	return (a == "/" and b == "/") or (a == "[" and b == "]") or (a == "【" and b == "】")
+
+## PDF 双栏合并行检测：释义形如「中文… 英文词 中文…」→ [释义1, 单词2, 释义2]，否则 []
+static func _split_merged_row(cn: String, re_word: RegEx) -> Array:
+	var toks := cn.split(" ", false)
+	if toks.size() < 3:
+		return []
+	for i in range(1, toks.size() - 1):
+		if re_word.search(String(toks[i])) == null:
+			continue
+		var left := " ".join(toks.slice(0, i))
+		var right := " ".join(toks.slice(i + 1))
+		if left == "" or right == "" or not _has_cjk(right):
+			continue
+		# 左侧最后一个字符必须是中文，避免把 "放弃 to give up sth" 这类英文注释拆错
+		var last := left.unicode_at(left.length() - 1)
+		if last >= 0x4E00 and last <= 0x9FFF:
+			return [left, String(toks[i]), right]
+	return []
+
+## 备份内容（内存版，导出文件与局域网互传共用）
+func build_backup_payload() -> Dictionary:
+	return {
 		"type": "cet4_backup", "version": 1, "exported_at": Time.get_datetime_string_from_system(),
 		"progress": progress,
 		"custom_words": _read_json(CUSTOM_WORDS_PATH, []),
 		"custom_phrases": _read_json(CUSTOM_PHRASES_PATH, []),
 		"removed": _read_json(REMOVED_PATH, {"words": [], "phrases": []}),
 	}
+
+func export_all() -> String:
+	DirAccess.make_dir_recursive_absolute(EXPORT_DIR)
+	var fname := "backup_%s.json" % Time.get_datetime_string_from_system().replace(":", "-")
+	var payload := build_backup_payload()
 	_write_json(EXPORT_DIR + "/" + fname, payload)
 	return EXPORT_DIR + "/" + fname
 

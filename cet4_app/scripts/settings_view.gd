@@ -292,8 +292,8 @@ func _ready() -> void:
 	var fmt_g := _group("📋 能识别的格式（点开看示例）", false)
 	data_box.add_child(fmt_g)
 	var fmt_b: VBoxContainer = fmt_g.get_meta("body")
-	fmt_b.add_child(UI.label("abandon 放弃\nabandon v. 放弃\nabandon /əˈbændən/ n. 放弃\nabandon/əˈbændən/ 放弃\ntake off 起飞；脱下（词组自动识别）", 26, p.text, true))
-	fmt_b.add_child(UI.label("规则：每行一条，先英文后中文，释义必须是中文；行首的 1. / - / • 等序号自动忽略；Day 5、Unit 2 这类标题行自动跳过；# 开头是注释。内容不是单词表时（如录音稿、文章）会弹出格式提示，请改用「交给 AI 整理」。", 24, p.sub, true))
+	fmt_b.add_child(UI.label("abandon 放弃\nabandon v. 放弃\nabandon /əˈbændən/ n. 放弃\nabandon/əˈbændən/ 放弃\ntake off 起飞；脱下（词组自动识别）\n—— 表格/词典导出也能直接粘 ——\nabandon⇥/əˈbændən/⇥n. 放弃（Tab 分列）\nabandon,/əˈbændən/,\"n. 放弃\"（ECDICT 式 CSV）\n{\"word\":\"abandon\",\"translation\":\"n. 放弃\"}（JSONL）", 26, p.text, true))
+	fmt_b.add_child(UI.label("规则：每行一条，先英文后中文，释义必须是中文；行首的 1. / - / • 等序号自动忽略；Day 5、Unit 2 这类标题行自动跳过；# 开头是注释；PDF/拍照常见的「两条挤一行」会自动拆开。内容不是单词表时（如录音稿、文章）会弹出格式提示，请改用「交给 AI 整理」。", 24, p.sub, true))
 	var paste := TextEdit.new()
 	paste.custom_minimum_size = Vector2(0, 240)
 	paste.placeholder_text = "长按或双击后，粘贴单词文本（每行：单词 中文释义）……"
@@ -335,6 +335,9 @@ func _ready() -> void:
 			return
 		UI.double_press(import_ai, "再按一次确认", func(): _do_import(paste)))
 	data_box.add_child(import_ai)
+	var lan_btn := UI.button("📡 局域网互传（两台手机互发词库）", p.panel2, p.text, 28)
+	lan_btn.pressed.connect(func(): LanSyncDialog.open(self))
+	data_box.add_child(lan_btn)
 
 	await get_tree().process_frame
 	if not is_inside_tree():

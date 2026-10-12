@@ -12,6 +12,12 @@ func check(name: String, cond: bool) -> void:
 	if not cond:
 		fails += 1
 
+func _has_word(res: Dictionary, w: String, p: String, m: String) -> bool:
+	for it in res["words"]:
+		if it["w"] == w and it["p"] == p and it["m"] == m:
+			return true
+	return false
+
 func run() -> void:
 	DB = root.get_node_or_null("DB")
 	if DB == null:
@@ -60,6 +66,24 @@ virtual buffet 丰盛大餐
 	check("下划线词进unknown", res["unknown"].has("hello_world_test 测试下划线"))
 	check("无释义进unknown", res["unknown"].has("barewordnoconn（无释义，请核对）"))
 	check("纯中文行进unknown", res["unknown"].has("随便一行中文"))
+
+	# ===== 新格式：TSV / ECDICT CSV / JSONL / 整块音标 / 双栏合并行 =====
+	var text2 := "apple\t/ˈæpl/\tn. 苹果\nbanana,/bəˈnɑːnə/,\"n. 香蕉\"\n{\"word\":\"cherry\",\"translation\":\"n. 樱桃\"}\ngrape [ɡ r eɪ p] n. 葡萄\npeach n. 桃子 plum 李子\nresume vt. & n. 恢复；简历\ntomato /təˈmeɪtoʊ/ 美 /təˈmɑːtoʊ/ 西红柿\norange,橙子\n"
+	var r2: Dictionary = DB.parse_import_text(text2)
+	for w in r2["words"]:
+		print("  W2: ", w["w"], " | p=", w["p"], " | m=", w["m"])
+	for u in r2["unknown"]:
+		print("  U2: ", u)
+	check("TSV行识别", _has_word(r2, "apple", "/ˈæpl/", "n. 苹果"))
+	check("ECDICT式CSV识别", _has_word(r2, "banana", "/bəˈnɑːnə/", "n. 香蕉"))
+	check("JSONL识别", _has_word(r2, "cherry", "", "n. 樱桃"))
+	check("带空格音标整块提取", _has_word(r2, "grape", "[ɡ r eɪ p]", "n. 葡萄"))
+	check("双栏合并行拆出peach", _has_word(r2, "peach", "", "n. 桃子"))
+	check("双栏合并行拆出plum", _has_word(r2, "plum", "", "李子"))
+	check("多词性并入", _has_word(r2, "resume", "", "vt. n. 恢复；简历"))
+	check("美音标记剥除", _has_word(r2, "tomato", "/təˈmeɪtoʊ/", "西红柿"))
+	check("两列CSV不误判", _has_word(r2, "orange", "", "橙子"))
+	check("新格式unknown很少", r2["unknown"].size() == 0)
 
 	print("== 测试完成 fails=%d ==" % fails)
 	quit(1 if fails > 0 else 0)

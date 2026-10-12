@@ -1,4 +1,5 @@
 extends SceneTree
+## 主测试：v0.9.25 起内置词库为空，测试自行注入夹具数据，不再依赖任何出厂词条
 
 var DB
 
@@ -14,16 +15,25 @@ func run() -> void:
 		print("FAIL autoload DB 未加载")
 		quit()
 		return
-	check("words=605", DB.words.size() == 605)
-	check("phrases=3366", DB.phrases.size() == 3366)
-	check("word_groups 首位=手写一", DB.word_groups[0] == "手写一")
-	check("word_groups 数=12", DB.word_groups.size() == 12)
-	check("phrase_groups 数=48", DB.phrase_groups.size() == 48)
-	check("phrase_groups 首位=P1", DB.phrase_groups[0] == "P1")
-	var g1 = DB.words_in_group("手写一")
-	check("手写一=121", g1.size() == 121)
-	var res = DB.search("trivial")
-	check("搜索trivial", res["words"].size() >= 1)
+	# 干净起点：出厂还原清空一切残留（v0.9.25 起出厂=空库）
+	DB.factory_reset_library()
+	check("内置词库为空", DB.words.size() == 0 and DB.phrases.size() == 0)
+	check("分组为空", DB.word_groups.is_empty() and DB.phrase_groups.is_empty())
+
+	# 注入夹具：12 词（测试组A）+ 3 词组（测试P组）
+	var fx := {"add_words": [], "add_phrases": []}
+	for i in range(1, 13):
+		fx["add_words"].append({"w": "fxword%02d" % i, "m": "n. 夹具词%d" % i, "p": "/fx/", "syn": [], "sim": [], "day": "测试组A"})
+	for i in range(1, 4):
+		fx["add_phrases"].append({"sec": "测试P组", "en": "fx phrase %d" % i, "cn": "夹具词组%d" % i})
+	DB.apply_ai_library_edit(fx)
+	check("夹具注入", DB.words.size() == 12 and DB.phrases.size() == 3)
+	check("word_groups 首位=测试组A", DB.word_groups.size() >= 1 and DB.word_groups[0] == "测试组A")
+	check("phrase_groups 首位=测试P组", DB.phrase_groups.size() >= 1 and DB.phrase_groups[0] == "测试P组")
+	var g1 = DB.words_in_group("测试组A")
+	check("测试组A=12", g1.size() == 12)
+	var res = DB.search("fxword01")
+	check("搜索fxword01", res["words"].size() >= 1)
 
 	# 星标
 	var id: String = DB.word_id(g1[0])
@@ -35,7 +45,7 @@ func run() -> void:
 
 	# 进度
 	DB.mark_known("words", id, true)
-	var prog = DB.group_progress("words", "手写一")
+	var prog = DB.group_progress("words", "测试组A")
 	check("分组进度>0", prog.known >= 1)
 	var s = DB.stats_summary()
 	check("统计含streak", s.has("streak") and s.has("today_learned"))
@@ -47,17 +57,17 @@ func run() -> void:
 	}
 	var log = DB.apply_ai_library_edit(ops)
 	check("AI新增写入", log.find("testword_zz") >= 0)
-	check("词库+2", DB.words.size() == 606 and DB.phrases.size() == 3367)
+	check("词库+2", DB.words.size() == 13 and DB.phrases.size() == 4)
 	var backups = DB.list_backups()
 	check("自动备份生成", backups.size() >= 1)
 	var rm = DB.apply_ai_library_edit({"remove_words": ["testword_zz"], "remove_phrases": ["test phrase zz"]})
-	check("AI删除", DB.words.size() == 605 and DB.phrases.size() == 3366)
+	check("AI删除", DB.words.size() == 12 and DB.phrases.size() == 3)
 	check("回滚", DB.rollback_backup(backups[0]).begins_with("已回滚"))
-	check("回滚后词数606", DB.words.size() == 606)
+	check("回滚后词数13", DB.words.size() == 13)
 	# 清理测试数据
 	DB.apply_ai_library_edit({"remove_words": ["testword_zz"], "remove_phrases": ["test phrase zz"]})
 	DB.factory_reset_library()
-	check("出厂还原", DB.words.size() == 605 and DB.phrases.size() == 3366)
+	check("出厂还原为空", DB.words.size() == 0 and DB.phrases.size() == 0)
 
 	# 导入导出
 	var path = DB.export_all()
@@ -69,7 +79,7 @@ func run() -> void:
 	var lib = {"words": [{"w": "hotupdate_zz", "m": "n. 热更新", "day": "自定义"}],
 		"phrases": [{"sec": "自定义", "en": "hot phrase zz", "cn": "热更新词组"}]}
 	var msg = DB.import_wordlib(JSON.stringify(lib))
-	check("热更新导入", msg.begins_with("导入完成") and DB.words.size() == 606)
+	check("热更新导入", msg.begins_with("导入完成") and DB.words.size() == 1)
 	DB.factory_reset_library()
 
 	# 聊天会话

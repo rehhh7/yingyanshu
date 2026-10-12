@@ -15,12 +15,37 @@ func snap(name: String) -> void:
 	img.save_png(OUT + name + ".png")
 	print("shot " + name)
 
+## 关掉所有弹窗（更新提示等），避免遮挡截图
+func _dismiss_dialogs() -> void:
+	for c in get_tree().root.get_children():
+		if c.is_in_group("ui_dialog"):
+			UI.dismiss_dialog(c)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
 func run() -> void:
 	DirAccess.make_dir_recursive_absolute(OUT)
+	# v0.9.25 起内置词库为空：注入演示夹具供学习/听写/搜索页面截图
+	var db0 = get_tree().root.get_node("DB")
+	db0.factory_reset_library()
+	var fx := {"add_words": [], "add_phrases": []}
+	var demo_words := [["trivial", "/ˈtrɪviəl/", "adj. 琐碎的；不重要的"],
+		["occurrence", "/əˈkɜːrəns/", "n. 发生；发生的事情"],
+		["precaution", "/prɪˈkɔːʃn/", "n. 预防措施"],
+		["abandon", "/əˈbændən/", "v. 放弃；抛弃"],
+		["absorb", "/əbˈzɔːb/", "v. 吸收；理解"]]
+	for w in demo_words:
+		fx["add_words"].append({"w": w[0], "p": w[1], "m": w[2], "day": "示例一组", "syn": [], "sim": []})
+	for i in range(1, 7):
+		fx["add_words"].append({"w": "demoword%d" % i, "p": "/demo/", "m": "n. 演示词%d" % i, "day": "Day 11", "syn": [], "sim": []})
+	for i in range(1, 5):
+		fx["add_phrases"].append({"sec": "示例P组", "en": "demo phrase %d" % i, "cn": "演示词组%d" % i})
+	db0.apply_ai_library_edit(fx)
 	var main = load("res://scenes/main.tscn").instantiate()
 	get_tree().root.add_child(main)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	_dismiss_dialogs()
 
 	for i in range(5):
 		main.switch_tab(i)
@@ -43,7 +68,7 @@ func run() -> void:
 	await get_tree().create_timer(0.5).timeout
 
 	# 学习卡片 正面/背面
-	main.open_study("words", "手写一")
+	main.open_study("words", "示例一组")
 	await snap("study_card_front")
 	main.overlay._flip()
 	await get_tree().create_timer(0.4).timeout   # 等翻面淡入淡出动画播完再截
@@ -53,7 +78,7 @@ func run() -> void:
 	main._on_overlay_back()
 
 	# 词组卡片
-	main.open_study("phrases", "P1")
+	main.open_study("phrases", "示例P组")
 	await snap("study_phrase")
 	main._on_overlay_back()
 
@@ -66,6 +91,7 @@ func run() -> void:
 	main.switch_tab(3)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	_dismiss_dialogs()
 	var ai = main.content.get_child(main.content.get_child_count() - 1)
 	ai.session["messages"] = [
 		{"role": "user", "content": "给生词组配近义词"},
@@ -103,7 +129,7 @@ func run() -> void:
 	await get_tree().process_frame
 	main3.switch_tab(0)
 	await snap("land_home")
-	main3.open_study("words", "手写一")
+	main3.open_study("words", "示例一组")
 	await snap("land_study")
 	main3._on_overlay_back()
 	main3.switch_tab(4)
@@ -179,6 +205,52 @@ func run() -> void:
 			UI.dismiss_dialog(c)
 	tmp.queue_free()
 	await get_tree().process_frame
+
+	# ============ 操作指南用图：新用户视角（竖屏） ============
+	get_tree().root.size = Vector2i(540, 1152)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	# 空库主页指引（新用户首次看到的样子）
+	db2.factory_reset_library()
+	main4.switch_tab(0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await snap("guide_home_empty")
+	# 设置 → 数据管理 导入区（展开分组并滚到导入按钮）
+	main4.switch_tab(4)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var settings2 = main4.content.get_child(main4.content.get_child_count() - 1)
+	# 设置页分帧构建：轮询等「数据管理」分组头出现再点开
+	var header: Button = null
+	for i in range(40):
+		for n in settings2.find_children("*", "Button", true, false):
+			if String(n.text).contains("数据管理"):
+				header = n
+				break
+		if header != null:
+			break
+		await get_tree().process_frame
+	if header != null:
+		header.pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var sc2: ScrollContainer = null
+	for c in settings2.get_children():
+		if c is ScrollContainer:
+			sc2 = c
+	# 滚到「拍照识图导入」按钮进入视野
+	var target: Control = null
+	for n in settings2.find_children("*", "Button", true, false):
+		if String(n.text).contains("拍照识图导入"):
+			target = n
+			break
+	if sc2 != null and target != null:
+		var want: float = target.global_position.y - sc2.global_position.y - 200.0
+		sc2.scroll_vertical = int(clampf(sc2.scroll_vertical + want, 0.0, sc2.get_v_scroll_bar().max_value))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await snap("guide_import_area")
 
 	print("== 截图完成 ==")
 	get_tree().quit()

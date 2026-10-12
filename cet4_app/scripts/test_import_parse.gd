@@ -24,6 +24,13 @@ func run() -> void:
 		print("FAIL autoload DB 未加载")
 		quit(1)
 		return
+	# v0.9.25 起内置词库为空：注入夹具模拟「已有 Day 21 + 判重词」的旧内置环境
+	DB.factory_reset_library()
+	DB.apply_ai_library_edit({
+		"add_words": [
+			{"w": "trivial", "m": "adj. 琐碎的；不重要的", "p": "", "syn": [], "sim": [], "day": "Day 21"},
+			{"w": "accordance", "m": "n. 一致；按照", "p": "", "syn": [], "sim": [], "day": "Day 21"}],
+		"add_phrases": [{"sec": "P1", "en": "virtual buffet", "cn": "丰盛大餐"}]})
 	var day: String = DB.next_day_name()
 	print("next_day = ", day)
 	check("新Day递增", day == "Day 22")

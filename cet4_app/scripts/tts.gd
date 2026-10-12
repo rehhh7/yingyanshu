@@ -9,7 +9,9 @@ static var _player: AudioStreamPlayer = null
 ## british 暂保留给系统 TTS 的口音偏好（语音包目前只有美式）
 static func play_word(word: String, british := false) -> void:
 	var id := word.to_lower().strip_edges()
-	var path := "res://assets/audio/words/%s.wav" % id
+	var path := "res://assets/audio/words/%s.ogg" % id
+	if id != "" and not ResourceLoader.exists(path):
+		path = "res://assets/audio/words/%s.wav" % id  # 兼容旧包
 	if id != "" and ResourceLoader.exists(path):
 		var tree := Engine.get_main_loop() as SceneTree
 		if tree == null:

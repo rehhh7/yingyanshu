@@ -579,7 +579,8 @@ static func _long_press_locked(le: Control, guard: Control) -> void:
 ## 安卓系统文件选择器返回的是 content:// 路径：Image.load() 只认真实文件路径会失败，
 ## 必须先走 FileAccess（内部过 ContentResolver）拿字节，再按格式从内存解码
 static func image_to_data_url(path: String, max_side := 1024) -> String:
-	var bytes := FileAccess.get_file_as_bytes(path)
+	# FileAccess 读不动时自动走 YysKit 插件 ContentResolver 兜底（DB.read_uri_bytes）
+	var bytes := DB.read_uri_bytes(path)
 	if bytes.is_empty():
 		return ""
 	var img := Image.new()

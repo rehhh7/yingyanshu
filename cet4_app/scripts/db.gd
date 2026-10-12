@@ -15,7 +15,7 @@ const MEMORY_PATH := "user://ai_memory.json"
 const BACKUP_DIR := "user://backups"
 const EXPORT_DIR := "user://exports"
 
-const VERSION := "0.9.22"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
+const VERSION := "0.9.23"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
 
 ## 读取内置更新日志；only_latest=true 时只取最新一个版本的段落
 static func changelog_text(only_latest := false) -> String:
@@ -525,11 +525,22 @@ func stats_summary() -> Dictionary:
 	}
 
 # ---------------- 备份 / 导入导出 / 词库热更新 ----------------
+## 统一的「用户选中的文件」读字节：先 FileAccess；读不到且是安卓则走 YysKit 插件的
+## ContentResolver——部分机型上 FileAccess 读不动系统选择器返回的 content:// URI
+## （GitHub godot#105328 / 提案#14263），而 ContentResolver 百分百可读（选择器已授权）
+static func read_uri_bytes(path: String) -> PackedByteArray:
+	var data := FileAccess.get_file_as_bytes(path)
+	if data.is_empty() and OS.get_name() == "Android" and Engine.has_singleton("YysKit"):
+		var r = Engine.get_singleton("YysKit").call("read_uri_bytes", path)
+		if r is PackedByteArray:
+			data = r
+	return data
+
 ## 读取文本类文件（txt/md/json/csv/docx），docx 自动解包提取纯文本
 ## 注意：安卓文件选择器返回 content:// URI（无扩展名、ZIPReader 打不开），
 ## 所以一律先读字节（FileAccess 支持 URI），再按 ZIP 魔数 "PK" 判断 docx
 func extract_text_file(path: String) -> String:
-	var data := FileAccess.get_file_as_bytes(path)
+	var data := read_uri_bytes(path)
 	if data.is_empty():
 		return ""
 	if data.size() >= 4 and data[0] == 0x50 and data[1] == 0x4B:

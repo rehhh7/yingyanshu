@@ -73,6 +73,45 @@ public class YysKit extends GodotPlugin {
 		return getGodot().getActivity();
 	}
 
+	// ===================== URI 读字节（系统文件选择器返回的 content:// 兜底） =====================
+
+	/**
+	 * 读取系统文件选择器返回的 URI（content:// / file://）或真实路径为字节数组；失败返回 null。
+	 * 部分机型上 Godot FileAccess 读不动 content://（godot#105328 / 提案#14263），
+	 * 走 ContentResolver.openInputStream 百分百可读（选择器已授予该 URI 的读权限）。
+	 */
+	@UsedByGodot
+	public byte[] read_uri_bytes(String uriStr) {
+		Activity a = act();
+		if (a == null) return null;
+		try {
+			java.io.InputStream in;
+			if (uriStr.startsWith("content://") || uriStr.startsWith("file://")) {
+				in = a.getContentResolver().openInputStream(Uri.parse(uriStr));
+			} else {
+				in = new FileInputStream(new File(uriStr));
+			}
+			if (in == null) return null;
+			java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+			byte[] buf = new byte[64 * 1024];
+			int n;
+			long total = 0;
+			while ((n = in.read(buf)) > 0) {
+				out.write(buf, 0, n);
+				total += n;
+				if (total > MAX_BYTES) {
+					in.close();
+					return null;
+				}
+			}
+			in.close();
+			return out.toByteArray();
+		} catch (Exception e) {
+			Log.e(TAG, "read_uri_bytes failed: " + uriStr, e);
+			return null;
+		}
+	}
+
 	// ===================== 系统分享面板 =====================
 
 	@UsedByGodot

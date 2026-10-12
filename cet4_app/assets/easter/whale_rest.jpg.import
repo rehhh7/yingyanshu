@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://l4xwcgm1jkya"
-path="res://.godot/imported/splash.webp-2fcf3b28f15b1064721a3f96a7d02cec.ctex"
+uid="uid://c4b78n3xc8g4y"
+path="res://.godot/imported/whale_rest.jpg-c247a04e537fcec3dd75a7dc87bf0a02.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/splash.webp"
-dest_files=["res://.godot/imported/splash.webp-2fcf3b28f15b1064721a3f96a7d02cec.ctex"]
+source_file="res://assets/easter/whale_rest.jpg"
+dest_files=["res://.godot/imported/whale_rest.jpg-c247a04e537fcec3dd75a7dc87bf0a02.ctex"]
 
 [params]
 

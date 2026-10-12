@@ -1,0 +1,117 @@
+Godot Engine v4.7.1.stable.official.a13da4feb - https://godotengine.org
+
+== 主界面就绪，开始全量触控遍历 ==
+tap 展开数据管理组
+PASS 找到滑动受害者按钮
+PASS 滑动未误触按钮
+PASS 滑动确实滚动了页面
+-- tab0_学习 共 5 个按钮 --
+tap tab0_学习:单词
+tap tab0_学习:单词生词
+-- tab1_生词 共 4 个按钮 --
+tap tab0_学习:词组生词
+tap tab1_生词:单词生词
+-- tab2_统计 共 0 个按钮 --
+-- tab3_AI 共 17 个按钮 --
+tap tab3_AI:💬 默认会话  ▾
+tap tab3_AI:▾  外观
+-- tab4_设置 共 11 个按钮 --
+main 有效=true tab=4
+tap tab3_AI:▾  字体
+tap tab4_设置:▸  外观
+open_study 后即刻 overlay=@VBoxContainer@527:<VBoxContainer#110914177317>
+3 帧后 overlay=<null>
+tap tab3_AI:单词
+tap tab4_设置:← 返回
+重开后 overlay=@VBoxContainer@572:<VBoxContainer#115192367305>
+PASS 学习覆盖层打开
+tap 学习:← 返回
+tap tab3_AI:← 返回
+tap tab4_设置:列表
+tap 学习:卡片
+tap tab3_AI:卡片
+tap tab4_设置:顺序
+tap 学习:顺序
+tap tab3_AI:顺序
+tap tab4_设置:卡片
+tap 学习:
+tap tab3_AI:
+tap tab4_设置:
+tap 学习:☆
+tap tab3_AI:☆
+tap tab4_设置:☆
+tap 学习:🔊 朗读
+tap tab3_AI:🔊 朗读
+tap tab4_设置:🔊 朗读
+tap 学习:语速 1.0x
+tap tab3_AI:上一张
+tap tab4_设置:上一张
+tap 学习:上一张
+tap tab3_AI:不认识 ⭐
+tap tab4_设置:不认识 ⭐
+tap 学习:不认识 ⭐
+tap tab3_AI:认识 ✓
+tap tab4_设置:认识 ✓
+tap 学习:认识 ✓
+tap tab3_AI:下一张
+tap tab4_设置:下一张
+tap 学习:下一张
+tap tab3_AI:列表
+tap tab4_设置:语速 1.0x
+tap tab3_AI:语速 0.7x
+tap tab4_设置:语速 0.7x
+PASS 听写覆盖层打开
+tap tab3_AI:🔊 播放发音（听音默写）
+tap tab4_设置:🔊 播放发音（听音默写）
+tap 听写:← 返回
+tap tab3_AI:词组
+tap tab4_设置:单词
+tap tab3_AI:词表
+tap tab4_设置:▾  外观
+tap tab3_AI:▸  外观
+PASS 找到主题按钮
+tap tab4_设置:▾  字体
+tap 主题切换
+tap tab3_AI:▸  发音
+tap tab4_设置:▾  发音
+tap tab3_AI:▸  AI API
+tap tab4_设置:▸  AI API
+tap tab3_AI:▸  数据管理
+tap tab4_设置:▸  数据管理
+tap tab3_AI:▸  词库回滚与重置
+tap tab4_设置:▸  词库回滚与重置
+tap tab3_AI:▾  关于
+tap tab4_设置:▾  关于
+tap tab3_AI:▸  更新日志
+tap tab4_设置:▸  更新日志
+PASS 主题切换后场景重建成功
+tap 主题切回
+tap tab3_AI:▸  字体
+tap tab4_设置:▸  字体
+tap tab3_AI:▾  AI API
+tap tab4_设置:▸  发音
+tap tab4_设置:▾  AI API
+tap tab3_AI:英语
+tap tab4_设置:英语
+tap tab3_AI:日语
+tap tab4_设置:日语
+PASS 退出确认弹窗
+tap 取消退出
+== 全量触控遍历完成：共点击 79 次，跳过危险按钮 17 个，fails=0 ==
+skip tab3_AI:删除
+skip tab3_AI:清空
+skip tab3_AI:回滚到 wordlib_2026-10-12T23-48-28
+skip tab3_AI:回滚到 wordlib_2026-10-12T23-31-21
+skip tab3_AI:回滚到 wordlib_2026-10-12T23-31-20
+skip tab3_AI:回滚到 wordlib_2026-10-12T22-57-39
+skip tab3_AI:回滚到 wordlib_2026-10-12T22-57-38
+skip tab3_AI:清除所有单词 / 词组（清空词库）
+skip tab3_AI:恢复出厂词库（清空自定义修改）
+skip tab4_设置:清空
+skip tab4_设置:回滚到 wordlib_2026-10-12T23-48-28
+skip tab4_设置:回滚到 wordlib_2026-10-12T23-31-21
+skip tab4_设置:回滚到 wordlib_2026-10-12T23-31-20
+skip tab4_设置:回滚到 wordlib_2026-10-12T22-57-39
+skip tab4_设置:回滚到 wordlib_2026-10-12T22-57-38
+skip tab4_设置:清除所有单词 / 词组（清空词库）
+skip tab4_设置:恢复出厂词库（清空自定义修改）

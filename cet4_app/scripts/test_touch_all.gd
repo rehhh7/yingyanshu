@@ -194,6 +194,11 @@ func run() -> void:
 	await frames(3)
 	DB = root.get_node("DB")
 	AI = root.get_node("AI")
+	# v0.9.25 起出厂空库：学习覆盖层遍历需要分组，空库时注入演示夹具
+	if DB.word_groups.is_empty():
+		DB.apply_ai_library_edit({"add_words": [
+			{"w": "fxdemo", "m": "n. 演示词", "p": "/demo/", "syn": [], "sim": [], "day": "演示组"},
+			{"w": "fxdemo2", "m": "v. 演示词二", "p": "/demo2/", "syn": [], "sim": [], "day": "演示组"}]})
 	force_close_dialogs()   # 关掉"本次更新"弹窗
 	print("== 主界面就绪，开始全量触控遍历 ==")
 

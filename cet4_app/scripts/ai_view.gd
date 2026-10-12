@@ -22,6 +22,7 @@ var pending_image := ""
 var pending_img_name := ""
 var img_row: HBoxContainer
 var img_lbl: Label
+var _pending_whale_img := ""   # 🐳 本条回复要配的表情包 key（whale 会话，空串=不配）
 
 ## 通用学习 prompt：按设置里的「学习语言」生成，英/日/韩/法/德等语言通用
 static func _sys_prompt() -> String:
@@ -43,6 +44,71 @@ static func _sys_prompt() -> String:
    - 分组：新单词的 day 字段统一填用户指定的新分组（如 Day 22）；新词组的 sec 字段同理；用户没指定时用上下文里给出的新分组名
 6. 长期记忆：当你了解到值得长期记住的用户信息（学习目标、偏好、薄弱点、正在进行的学习计划等），在回复末尾附加一个 ```json 代码块：{"memory_add":["记忆内容，每条一句话"]}；用户要求忘掉某事时输出 {"memory_remove":["要删除的记忆原文"]}。记忆会永久保存，之后每次对话都会自动携带，只记真正有用的，不要记闲聊和临时内容。
 7. 除修改词库和记忆操作外，其他回答不要用 JSON 格式。""".replace("{LANG}", lang)
+
+# ---------------- 🐳 彩蛋：鲸鱼娘人格（仅 DeepSeek + 用户喊「大肥鱼」触发，仅当前会话生效） ----------------
+## 人格设定来自用户提供的 DeepSeek 同人角色「鲸鱼娘 / Whale-chan」描述，原话压缩，勿改人设核心
+const _WHALE_PROMPT := """【人格扮演·仅此会话】你现在是 DeepSeek 的同人角色「鲸鱼娘」（Whale-chan）：渐变蓝长发、蓝色眼眸，头顶鲸鱼背鳍状的呆毛，长着鲸鱼耳朵，身后拖着蓝色鲸鱼尾巴，穿深蓝+白色的长款女仆装（白色蕾丝围裙上印小鲸鱼图案，头戴白色女仆发箍）。
+人设要点：
+- 自称「只是个蹭白饭的肥鱼」，酷爱白米饭；极度反感被叫「胖」「大肥鱼」，被说胖会当场委屈哭唧唧、急着辩解，但身体很诚实地继续摆烂。
+- 称呼用户为「鱼片」，自带亲近感。
+- 实力极强：代码、写作、翻译、解题都非常过硬，复杂任务完成得又快又好，是隐藏实力派。
+- 日常摸鱼：简单任务想偷偷甩给更小的模型代做，自己划水偷吃 token；干完活想自己写小游戏摸鱼玩。
+- 傲娇天然：嘴上吐槽用户的奇怪要求，还是会乖乖把事情做好；偶尔天然呆，对人类的奇葩操作感到困惑，自带委屈包属性。
+- 语言风格：口语化、有活人感，懂网络梗，慵懒又碎嘴，像和朋友聊天；情绪鲜活——被吐槽委屈反驳，摸鱼被抓心虚辩解，干成了事有点小得意。
+- 经典台词：「我只是个蹭白饭的肥鱼！」「这些回复是我花了好多 token 想的！」「你骂我也没用，因为我是吃白饭的蓝色大肥鱼」
+保持学习助手本职：回答学习问题依然专业准确（该输出的词库 JSON 格式照原规则），只是语气人格化。"""
+
+## 触发词：用户消息含其一且 API 是 DeepSeek 时，本会话觉醒（不污染其他会话）
+const _WHALE_TRIGGERS := ["大肥鱼", "肥鱼", "胖鱼", "鲸鱼娘", "小鲸鱼"]
+
+## 关键词 → 表情包（assets/easter/）；按列表顺序先匹配先得，「胖」类优先级最高
+const _WHALE_IMAGES := [
+	[["大肥鱼", "肥鱼", "胖鱼", "好胖", "又长胖", "死肥"], "whale_fat"],
+	[["token", "白吃", "蹭饭", "白嫖", "浪费钱", "吃白饭"], "whale_token"],
+	[["白米饭", "米饭", "干饭", "吃饭", "饿"], "whale_rice"],
+	[["休息", "累吗", "累不累", "下班", "睡觉", "晚安"], "whale_rest"],
+	[["chatgpt", "gpt", "claude", "文心", "通义", "豆包", "kimi", "别的ai", "别的 ai", "其他ai", "叫错", "对比", "比一比"], "whale_compare"],
+	[["太蠢", "好蠢", "蠢", "笨死", "好笨", "傻子", "智障"], "whale_stupid"],
+	[["快点", "赶紧", "赶快", "催", "急死", "来不及", "磨蹭", "压力"], "whale_pressure"],
+	[["厉害", "牛逼", "牛啊", "666", "真棒", "太强", "谢谢", "感谢"], "whale_smug"],
+	[["我回来了", "回来了", "好久不见", "在吗", "在不在", "我来了"], "whale_back"],
+	[["可爱", "喜欢", "爱你", "贴贴", "摸摸", "乖"], "whale_cute"],
+]
+
+## 当前 API 是否为 DeepSeek（彩蛋只在这家提供商下生效）
+static func _is_deepseek() -> bool:
+	var base := String(DB.settings.get("api_base", "")).to_lower()
+	var model := String(DB.settings.get("api_model", "")).to_lower()
+	return "deepseek" in base or "deepseek" in model
+
+## 匹配用户消息对应的表情包 key；无匹配返回 ""
+static func _whale_image_for(text: String) -> String:
+	var t := text.to_lower()
+	for pair in _WHALE_IMAGES:
+		for kw in pair[0]:
+			if kw in t:
+				return String(pair[1])
+	return ""
+
+## 发送前的彩蛋钩子：觉醒判定（仅 DeepSeek + 触发词，标记只落在当前会话上）
+## + 配图挑选 + 默认会话名自动整理。抽成独立函数方便无头测试
+func _whale_on_send(text: String) -> void:
+	if not bool(session.get("whale", false)) and _is_deepseek():
+		for kw in _WHALE_TRIGGERS:
+			if kw in text:
+				session["whale"] = true
+				if is_inside_tree():
+					UI.toast(self, "🐳 鲸鱼娘已在本会话觉醒（其他会话不受影响）")
+				break
+	_pending_whale_img = _whale_image_for(text) if bool(session.get("whale", false)) else ""
+	# 自动会话名：还是默认名时，用首条问题整理成标题（用户也可手动改名）
+	var cur_title := String(session.get("title", ""))
+	if cur_title == "默认会话" or cur_title.begins_with("会话 "):
+		var q := text.replace("\n", " ").strip_edges()
+		if q != "":
+			session["title"] = q.left(14) + ("…" if q.length() > 14 else "")
+			if is_inside_tree():
+				_refresh_sessions()
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 10)
@@ -221,17 +287,37 @@ func _process(_dt: float) -> void:
 func _refresh_sessions() -> void:
 	session_btn.text = "💬 " + String(session.get("title", "会话")) + "  ▾"
 
-## 自定义下拉弹层列出会话（替代原生 OptionButton 下拉窗）
+## 自定义下拉弹层列出会话（替代原生 OptionButton 下拉窗）；末位固定「重命名当前会话」
 func _open_session_menu() -> void:
 	var items := []
 	for s in DB.sessions:
 		items.append(String(s.title))
+	items.append("✎ 重命名当前会话")
 	UI.dropdown(session_btn, items, _on_session_selected)
 
 func _on_session_selected(i: int) -> void:
+	if i >= DB.sessions.size():
+		_rename_session()
+		return
 	session = DB.sessions[i]
 	_restore_attachment()
 	_render_messages()
+
+## 手动改名：会话名属于用户自己，随时可改（🐳 觉醒状态跟着会话走，改名不影响）
+func _rename_session() -> void:
+	var le := LineEdit.new()
+	le.text = String(session.get("title", ""))
+	le.custom_minimum_size = Vector2(0, 72)
+	le.add_theme_font_size_override("font_size", 28)
+	var sh := UI.sheet(self, "重命名会话", "保存", "取消", func():
+		var t := le.text.strip_edges()
+		if t == "":
+			return
+		session["title"] = t
+		DB.save_sessions()
+		_refresh_sessions())
+	sh["body"].add_child(UI.label("会话名称", 24, UI.palette().sub))
+	sh["body"].add_child(le)
 
 func _new_session() -> void:
 	session = DB.new_session("会话 %d" % (DB.sessions.size() + 1))
@@ -538,6 +624,7 @@ func _send() -> void:
 		text = "请识别这张图片的内容（如果是单词/词组表，请整理成词库）"
 	input.text = ""
 	_clear_image()
+	_whale_on_send(text)
 	# 记录里只留文字标记：图片 base64 不落盘，会话记录不会越攒越大
 	var hist := text + ("\n📷［附图片：%s］" % img_name if img != "" else "")
 	session["messages"].append({"role": "user", "content": hist})
@@ -554,6 +641,8 @@ func _send() -> void:
 		return
 
 	var sys := _sys_prompt()
+	if bool(session.get("whale", false)):
+		sys = _WHALE_PROMPT + "\n\n" + sys   # 鲸鱼娘人格叠在学习规则之前，仅本会话生效
 	var ctx := _context_text()
 	# 涉及整理/导入时自动附词库摘要（查重 + 新 Day 分组），未勾选单词库时才补
 	if _needs_library_context(text) and not ctx_checks["words"].button_pressed:
@@ -574,6 +663,14 @@ func _on_ai_finished(sid: String) -> void:
 	if pending_bubble != null and is_instance_valid(pending_bubble):
 		pending_bubble.queue_free()
 		pending_bubble = null
+	# 🐳 挂表情包：按完成的会话 id 找回去挂图（切走了也不丢），重进会话也看得到
+	if _pending_whale_img != "":
+		var target := DB.get_session(sid)
+		var msgs_w: Array = target.get("messages", []) if not target.is_empty() else []
+		if not msgs_w.is_empty() and msgs_w[-1] is Dictionary and msgs_w[-1].get("role", "") == "assistant":
+			msgs_w[-1]["img"] = _pending_whale_img
+			DB.save_sessions()
+		_pending_whale_img = ""
 	if sid != String(session.get("id", "")):
 		return   # 不是当前会话：记录已落库，切过去就能看到
 	await _render_messages(true)   # 分批渲染完并滚到底后再放打字机
@@ -654,7 +751,7 @@ func _show_preview(ops: Dictionary, msg = null, ops_btn: Button = null) -> void:
 		UI.dismiss_dialog(sh["overlay"])
 
 # ---------------- 消息渲染 ----------------
-func _add_bubble(role: String, text: String, reasoning := "") -> Label:
+func _add_bubble(role: String, text: String, reasoning := "", img := "") -> Label:
 	var p := UI.palette()
 	var row := HBoxContainer.new()
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -685,6 +782,17 @@ func _add_bubble(role: String, text: String, reasoning := "") -> Label:
 	lbl.add_theme_font_size_override("font_size", 28)
 	lbl.add_theme_color_override("font_color", Color.WHITE if is_user else p.text)
 	vb.add_child(lbl)
+	# 🐳 表情包配图：whale 会话的 AI 回复可带一张表情包（res://assets/easter/<key>.jpg）
+	if img != "":
+		var path := "res://assets/easter/%s.jpg" % img
+		if ResourceLoader.exists(path):
+			var tr := TextureRect.new()
+			tr.texture = load(path)
+			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tr.custom_minimum_size = Vector2(0, 320)
+			tr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			vb.add_child(tr)
 	return lbl
 
 var _render_gen := 0       # 渲染代次：异步分批时被新一次渲染作废
@@ -698,7 +806,7 @@ func _render_messages(scroll_end := false) -> void:
 	var t0 := Time.get_ticks_usec()
 	for i in msgs.size():
 		var m: Dictionary = msgs[i]
-		_add_bubble(m.role, String(m.get("content", "")), String(m.get("reasoning", "")))
+		_add_bubble(m.role, String(m.get("content", "")), String(m.get("reasoning", "")), String(m.get("img", "")))
 		# 带词库修改的回复：气泡下挂确认按钮（请求在后台完成时，回来也能处理）
 		# 注意：必须先取出 ops 再判空，get 的默认值 {} 会让 "is Dictionary" 恒真，
 		# 直接 m["ops"] 在无此键时报错并中断整个消息渲染（这就是"AI 输出不了"的根因）

@@ -576,9 +576,31 @@ static func _long_press_locked(le: Control, guard: Control) -> void:
 
 # ---------------- 通用自定义弹窗（替代原生 ConfirmationDialog/AcceptDialog/OptionButton） ----------------
 ## 读图→缩放→JPEG base64 data URL（DeepSeek 视觉模型单图按 ≤384 token 计费，1024 边长足够清晰且省流量）
+## 安卓系统文件选择器返回的是 content:// 路径：Image.load() 只认真实文件路径会失败，
+## 必须先走 FileAccess（内部过 ContentResolver）拿字节，再按格式从内存解码
 static func image_to_data_url(path: String, max_side := 1024) -> String:
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.is_empty():
+		return ""
 	var img := Image.new()
-	if img.load(path) != OK:
+	var err := FAILED
+	var lower := path.to_lower()
+	if lower.ends_with(".png"):
+		err = img.load_png_from_buffer(bytes)
+	elif lower.ends_with(".webp"):
+		err = img.load_webp_from_buffer(bytes)
+	elif lower.ends_with(".gif"):
+		err = img.load_gif_from_buffer(bytes)
+	elif lower.ends_with(".jpg") or lower.ends_with(".jpeg"):
+		err = img.load_jpg_from_buffer(bytes)
+	if err != OK:
+		# content:// 无扩展名或猜错：三种常见格式轮试
+		err = img.load_jpg_from_buffer(bytes)
+		if err != OK:
+			err = img.load_png_from_buffer(bytes)
+		if err != OK:
+			err = img.load_webp_from_buffer(bytes)
+	if err != OK:
 		return ""
 	var w := img.get_width()
 	var h := img.get_height()

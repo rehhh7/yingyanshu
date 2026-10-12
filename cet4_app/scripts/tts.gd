@@ -4,9 +4,9 @@ extends RefCounted
 
 static var _player: AudioStreamPlayer = null
 
-## 单词发音三级兜底：① 内置语音包（605 词真人录音）② 音素拼接（任意带音标的词）③ 系统 TTS
+## 单词发音两级兜底：① 内置语音包（605 词真人录音）② 系统 TTS
 ## british 暂保留给系统 TTS 的口音偏好（语音包目前只有美式）
-static func play_word(word: String, phonetic := "", british := false) -> void:
+static func play_word(word: String, british := false) -> void:
 	var id := word.to_lower().strip_edges()
 	var path := "res://assets/audio/words/%s.wav" % id
 	if id != "" and ResourceLoader.exists(path):
@@ -20,9 +20,20 @@ static func play_word(word: String, phonetic := "", british := false) -> void:
 		_player.stream = load(path)
 		_player.play()
 		return
-	if phonetic.strip_edges() != "" and PhonemeTTS.speak(phonetic):
-		return
 	speak(word, british)
+
+## 系统可用的英文语音列表（每项含 id / locale / name）
+static func english_voices() -> Array:
+	var out: Array = []
+	for v in DisplayServer.tts_get_voices():
+		var loc := String(v.get("locale", "")).to_lower().replace("-", "_")
+		if loc.begins_with("en"):
+			out.append(v)
+	return out
+
+## 系统 TTS 是否能读英文（导入新词的兜底依赖它；内置词走录音不受影响）
+static func has_english_voice() -> bool:
+	return not english_voices().is_empty()
 
 static func _pick_voice(british: bool) -> String:
 	var want := "en_gb" if british else "en_us"

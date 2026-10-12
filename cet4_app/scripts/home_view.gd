@@ -462,7 +462,7 @@ func _result_row(title: String, phonetic: String, meaning: String,
 		UI.pop(star))
 	btn_col.add_child(star)
 	var spk := UI.icon_btn("🔊", p.accent, 34)
-	spk.pressed.connect(func(): TTS.play_word(speak_text, phonetic))
+	spk.pressed.connect(func(): TTS.play_word(speak_text))
 	btn_col.add_child(spk)
 	if not src.is_empty():
 		var edit := UI.icon_btn("✎", p.sub, 34)

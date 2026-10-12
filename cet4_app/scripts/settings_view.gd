@@ -187,6 +187,22 @@ func _ready() -> void:
 		rate_btn.text = "%.1fx" % r)
 	rh.add_child(rate_btn)
 	tts_box.add_child(rate_card)
+	# 系统语音引擎状态：内置 605 词走录音不受影响，导入新词的兜底依赖系统英文语音
+	var eng_card := UI.panel()
+	var evb := VBoxContainer.new()
+	eng_card.add_child(evb)
+	var en_voices := TTS.english_voices()
+	if en_voices.is_empty():
+		evb.add_child(UI.label("系统语音引擎：未检测到英文语音", 28, p.danger))
+		evb.add_child(UI.label("内置单词发音不受影响；但你导入的新词将无法朗读。可到系统「设置 → 无障碍 → 文字转语音（TTS）输出」安装英文语音数据。", 24, p.sub, true))
+	else:
+		evb.add_child(UI.label("系统语音引擎：已检测到 %d 个英文语音" % en_voices.size(), 28, p.ok))
+		evb.add_child(UI.label("内置单词用真人录音；导入的新词由系统引擎朗读。", 24, p.sub, true))
+	var test_btn := UI.button("🔊 试听系统发音", p.panel2, p.text, 28)
+	test_btn.custom_minimum_size = Vector2(280, 72)
+	test_btn.pressed.connect(func(): TTS.speak("apple"))
+	evb.add_child(test_btn)
+	tts_box.add_child(eng_card)
 
 	await get_tree().process_frame
 	if not is_inside_tree():

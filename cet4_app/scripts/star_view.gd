@@ -103,7 +103,7 @@ func _row(it: Dictionary, p: Dictionary) -> Control:
 	star.pressed.connect(func(): DB.toggle_star(kind, id))
 	hb.add_child(star)
 	var spk := UI.icon_btn("🔊", p.accent, 36)
-	spk.pressed.connect(func(): TTS.play_word(title_text, String(it.get("p", "")) if kind == "words" else ""))
+	spk.pressed.connect(func(): TTS.play_word(title_text))
 	hb.add_child(spk)
 	return card
 

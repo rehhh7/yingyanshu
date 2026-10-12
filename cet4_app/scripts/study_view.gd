@@ -194,7 +194,7 @@ func _refresh() -> void:
 	front_box.add_child(tts_row)
 	var speak := UI.button("🔊 朗读", p.panel2, p.text, 30)
 	speak.custom_minimum_size = Vector2(240, 84)
-	speak.pressed.connect(func(): TTS.play_word(title_text, String(it.get("p", "")) if kind == "words" else ""))
+	speak.pressed.connect(func(): TTS.play_word(title_text))
 	tts_row.add_child(speak)
 	rate_btn = UI.button("语速 %.1fx" % float(DB.settings.get("tts_rate", 1.0)), p.panel2, p.text, 28)
 	rate_btn.custom_minimum_size = Vector2(190, 84)
@@ -334,7 +334,7 @@ func _list_row(it: Dictionary, p: Dictionary) -> Control:
 	hb.add_child(star)
 	var spk := UI.button("🔊", p.panel2, p.text, 30)
 	spk.custom_minimum_size = Vector2(88, 88)
-	spk.pressed.connect(func(): TTS.play_word(title_text, String(it.get("p", "")) if kind == "words" else ""))
+	spk.pressed.connect(func(): TTS.play_word(title_text))
 	hb.add_child(spk)
 	if kind == "words" and not it.get("syn", []).is_empty():
 		var detail := UI.label("", 26, p.sub, true)

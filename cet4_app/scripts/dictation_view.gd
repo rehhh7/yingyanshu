@@ -49,7 +49,7 @@ func _ready() -> void:
 	prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vb.add_child(prompt_lbl)
 	var spk := UI.button("🔊 播放发音（听音默写）", p.panel2, p.text, 28)
-	spk.pressed.connect(func(): TTS.play_word(_answer(), _phonetic()))
+	spk.pressed.connect(func(): TTS.play_word(_answer()))
 	vb.add_child(spk)
 
 	input = LineEdit.new()
@@ -76,10 +76,6 @@ func _ready() -> void:
 func _answer() -> String:
 	var it: Dictionary = items[idx]
 	return String(it.w) if kind == "words" else String(it.en)
-
-func _phonetic() -> String:
-	var it: Dictionary = items[idx]
-	return String(it.get("p", "")) if kind == "words" else ""
 
 func _next() -> void:
 	if idx >= items.size():

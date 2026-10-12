@@ -1,0 +1,10 @@
+* text=auto
+
+# 二进制明确标注，防止换行转换
+*.wav binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ttf binary
+*.apk binary
+*.pdf binary

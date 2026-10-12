@@ -1,0 +1,31 @@
+# ---- Godot 缓存（.import 文件保留，记录 QOA/PCM 压缩参数）----
+cet4_app/.godot/
+
+# ---- 构建产物 ----
+*.apk
+*.idsig
+
+# ---- 本地工具链（2.4GB，不入库）----
+_tools/downloads/
+_tools/android-sdk/
+_tools/jdk-17/
+_tools/pylib/
+_tools/envtest*
+_tools/phonemes_raw/
+_tools/ipa_test/
+_tools/userdata_backup/
+_tools/words_backup/
+_tools/word_list.tsv
+
+# ---- 截图与临时文件 ----
+_screenshots/
+_shots/
+_shot*.jpg
+_cert_check/
+_pdf_qa/
+
+# ---- 系统 ----
+Thumbs.db
+Desktop.ini
+__pycache__/
+*.pyc

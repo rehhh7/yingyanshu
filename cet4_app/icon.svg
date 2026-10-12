@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="40" fill="#3B82F6"/>
+  <text x="96" y="96" font-size="72" font-weight="bold" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">词</text>
+  <path d="M96 22 l10 20 22 3 -16 16 4 22 -20 -11 -20 11 4 -22 -16 -16 22 -3 z" fill="#F59E0B" transform="translate(44,96) scale(0.9)"/>
+</svg>

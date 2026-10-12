@@ -60,6 +60,7 @@ func _ready() -> void:
 	input.add_theme_stylebox_override("focus", UI.style_box(p.panel2, 14, p.accent, 2))
 	input.add_theme_color_override("font_color", p.text)
 	input.add_theme_color_override("font_placeholder_color", p.sub)
+	UI.attach_edit_menu(input)
 	input.text_submitted.connect(_on_submit_text)
 	vb.add_child(input)
 

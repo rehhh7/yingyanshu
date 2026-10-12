@@ -477,6 +477,64 @@ static func tap_lock(le: Control) -> void:
 				var vsb: VScrollBar = (le as TextEdit).get_v_scroll_bar()
 				vsb.value -= ev.relative.y
 			guard.accept_event())
+	attach_edit_menu(le)
+
+## 编辑态长按弹应用内菜单（复制/剪切/粘贴/全选）：Godot 原生右键菜单在部分安卓机上不弹，
+## 统一走自家 dropdown，样式与全 App 一致，且带震动（设置页可关）
+static func attach_edit_menu(le: Control) -> void:
+	if not (le is LineEdit or le is TextEdit):
+		return
+	var estate := {"pressed": false, "dragged": false, "seq": 0}
+	le.gui_input.connect(func(ev: InputEvent):
+		if not bool(le.get("editable")):
+			return   # 锁定态由 tap_lock 的 guard 负责
+		if ev is InputEventScreenTouch or ev is InputEventMouseButton:
+			if ev.pressed:
+				estate.pressed = true
+				estate.dragged = false
+				estate.seq = int(estate.seq) + 1
+				var my: int = estate.seq
+				le.get_tree().create_timer(0.6).timeout.connect(func():
+					if int(estate.seq) == my and estate.pressed and not estate.dragged \
+							and is_instance_valid(le) and bool(le.get("editable")):
+						_edit_menu(le))
+			else:
+				estate.pressed = false
+		elif ev is InputEventScreenDrag or (ev is InputEventMouseMotion and (ev.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0):
+			if estate.pressed and ev.relative.length() > 6.0:
+				estate.dragged = true)
+
+## 编辑态长按菜单：按选中状态和剪贴板动态出项（剪切/复制/粘贴/全选）
+static func _edit_menu(le: Control) -> void:
+	vibrate(24)
+	var has_sel := false
+	if le is LineEdit:
+		has_sel = (le as LineEdit).has_selection()
+	elif le is TextEdit:
+		has_sel = (le as TextEdit).has_selection()
+	var opts: Array = []
+	var acts: Array = []
+	if has_sel:
+		opts.append("✂️ 剪切"); acts.append("cut")
+		opts.append("📄 复制"); acts.append("copy")
+	if DisplayServer.clipboard_get() != "":
+		opts.append("📋 粘贴"); acts.append("paste")
+	opts.append("🔠 全选"); acts.append("select_all")
+	dropdown(le, opts, func(i: int):
+		vibrate(14)
+		var a: String = acts[i]
+		if a == "cut":
+			if le is LineEdit: (le as LineEdit).menu_option(LineEdit.MENU_CUT)
+			else: (le as TextEdit).cut()
+		elif a == "copy":
+			if le is LineEdit: (le as LineEdit).menu_option(LineEdit.MENU_COPY)
+			else: (le as TextEdit).copy()
+		elif a == "paste":
+			if le is LineEdit: (le as LineEdit).menu_option(LineEdit.MENU_PASTE)
+			else: (le as TextEdit).paste()
+		elif a == "select_all":
+			if le is LineEdit: (le as LineEdit).select_all()
+			else: (le as TextEdit).select_all())
 
 static func _unlock_edit(le: Control, guard: Control) -> void:
 	le.editable = true
@@ -517,6 +575,20 @@ static func _long_press_locked(le: Control, guard: Control) -> void:
 			_unlock_edit(le, guard))
 
 # ---------------- 通用自定义弹窗（替代原生 ConfirmationDialog/AcceptDialog/OptionButton） ----------------
+## 读图→缩放→JPEG base64 data URL（DeepSeek 视觉模型单图按 ≤384 token 计费，1024 边长足够清晰且省流量）
+static func image_to_data_url(path: String, max_side := 1024) -> String:
+	var img := Image.new()
+	if img.load(path) != OK:
+		return ""
+	var w := img.get_width()
+	var h := img.get_height()
+	if w <= 0 or h <= 0:
+		return ""
+	var m: float = maxf(w, h)
+	if m > max_side:
+		var s := max_side / m
+		img.resize(maxi(1, int(w * s)), maxi(1, int(h * s)), Image.INTERPOLATE_LANCZOS)
+	return "data:image/jpeg;base64," + Marshalls.raw_to_base64(img.save_jpg_to_buffer(0.85))
 ## iOS 风格大弹窗：标题 + 可滚动内容区 + 底部大按钮，尺寸钳制在屏幕内
 ## 返回 {"overlay","body","scroll","ok","cancel"}；cancel_text 传 "" 时只显示主按钮
 static func sheet(parent: Node, title: String, ok_text := "确定", cancel_text := "取消",
@@ -566,6 +638,8 @@ static func sheet(parent: Node, title: String, ok_text := "确定", cancel_text 
 	cv.add_child(bm)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# ScrollContainer/VBox 默认 mouse_filter=PASS：弹窗里滑动会穿透带动背景页面一起滚，必须 STOP
+	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
 	# ScrollContainer 不会把内容高度向上传播，先给一个可靠默认高度，再由 _sheet_fit 精调
 	scroll.custom_minimum_size = Vector2(card_w - 52.0, minf(440.0, vp.y * 0.5))
 	bm.add_child(scroll)

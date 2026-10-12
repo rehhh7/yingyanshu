@@ -17,6 +17,11 @@ var ctx_checks := {}
 var send_btn: Button
 var file_lbl: Label
 var file_clear_btn: Button
+# 附图（DeepSeek 识图）：随下一条消息发送，走视觉模型，不写入会话记录
+var pending_image := ""
+var pending_img_name := ""
+var img_row: HBoxContainer
+var img_lbl: Label
 
 const SYS_PROMPT := """你是由 API 提供商（例如 DeepSeek）提供的 AI 模型，运行在背单词应用「英眼书」内。用户是学生，正在背四级单词和听力词组。
 规则：
@@ -121,10 +126,28 @@ func _ready() -> void:
 	msg_box = UI.scroll_box()
 	msg_scroll.add_child(msg_box)
 
+	# ---- 附图行（识图：默认隐藏，选图后出现）----
+	img_row = HBoxContainer.new()
+	img_row.add_theme_constant_override("separation", 8)
+	add_child(img_row)
+	img_lbl = UI.label("", 24, p.sub)
+	img_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	img_row.add_child(img_lbl)
+	var img_clear := UI.button("✕ 移除", p.panel2, p.danger, 24)
+	img_clear.custom_minimum_size = Vector2(150, 56)
+	img_clear.pressed.connect(_clear_image)
+	img_row.add_child(img_clear)
+	img_row.visible = false
+
 	# ---- 输入区 ----
 	var input_bar := HBoxContainer.new()
 	input_bar.add_theme_constant_override("separation", 10)
 	add_child(input_bar)
+	var img_btn := UI.button("📷", p.panel2, p.text, 32)
+	img_btn.custom_minimum_size = Vector2(100, 96)
+	img_btn.tooltip_text = "附图片（DeepSeek 识图）"
+	img_btn.pressed.connect(_pick_image)
+	input_bar.add_child(img_btn)
 	input = TextEdit.new()
 	input.placeholder_text = "长按或双击后输入，例如：给生词组配近义词"
 	input.custom_minimum_size = Vector2(0, 96)
@@ -332,6 +355,28 @@ func _paste_file_dialog() -> void:
 		if attached_file_text.strip_edges() == "":
 			ctx_checks["file"].button_pressed = false)
 
+# ---------------- 附图（DeepSeek 识图） ----------------
+func _pick_image() -> void:
+	UI.file_dialog(self, "选择图片（jpg / png / webp）",
+		DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
+		["*.jpg,*.jpeg,*.png,*.webp;图片;image/jpeg,image/png,image/webp"],
+		func(ok: bool, paths: PackedStringArray, _i: int):
+			if not ok or paths.is_empty():
+				return
+			var data_url := UI.image_to_data_url(paths[0])
+			if data_url == "":
+				UI.toast(self, "图片读取失败")
+				return
+			pending_image = data_url
+			pending_img_name = paths[0].get_file()
+			img_lbl.text = "📷 已附图：%s（随下一条消息发送，走视觉模型）" % pending_img_name
+			img_row.visible = true)
+
+func _clear_image() -> void:
+	pending_image = ""
+	pending_img_name = ""
+	img_row.visible = false
+
 # ---------------- 发送 ----------------
 ## 判断本次提问是否涉及整理/导入词库（需要自动附词库摘要供查重）
 func _needs_library_context(text: String) -> bool:
@@ -466,7 +511,9 @@ func _context_text() -> String:
 
 func _send() -> void:
 	var text := input.text.strip_edges()
-	if text == "":
+	var img := pending_image
+	var img_name := pending_img_name
+	if text == "" and img == "":
 		return
 	if AI.busy:
 		UI.toast(self, "上一条还在处理中，请稍候（超时会自动解锁）")
@@ -475,15 +522,20 @@ func _send() -> void:
 	if key == "":
 		UI.toast(self, "请先在「设置 - AI API」里填写 API Key")
 		return
+	if text == "":
+		text = "请识别这张图片的内容（如果是单词/词组表，请整理成词库）"
 	input.text = ""
-	session["messages"].append({"role": "user", "content": text})
+	_clear_image()
+	# 记录里只留文字标记：图片 base64 不落盘，会话记录不会越攒越大
+	var hist := text + ("\n📷［附图片：%s］" % img_name if img != "" else "")
+	session["messages"].append({"role": "user", "content": hist})
 	DB.save_sessions()
-	_add_bubble("user", text)
+	_add_bubble("user", hist)
 	pending_bubble = _add_bubble("assistant", "思考中……（可切换到其他界面，不会中断）")
 	send_btn.disabled = true
 
 	# 大文件防爆上下文：整理类任务 + 附加文件超 1 万字 → 分批顺序发送，汇总后统一确认
-	if _is_organize_intent(text) and attached_file_text.length() > 10000:
+	if img == "" and _is_organize_intent(text) and attached_file_text.length() > 10000:
 		var digest := _library_digest() if not ctx_checks["words"].button_pressed else ""
 		var sys_b := SYS_PROMPT + "\n\n以下是用户本次携带的数据：\n" + digest
 		AI.start_batch(String(session.id), sys_b, text, _split_chunks(attached_file_text, 7000))
@@ -499,7 +551,7 @@ func _send() -> void:
 	var messages := []
 	for m in session.messages.slice(maxi(0, session.messages.size() - 30)):
 		messages.append({"role": m.role, "content": m.content})
-	AI.start_single(String(session.id), sys, messages)
+	AI.start_single(String(session.id), sys, messages, img)
 
 func _on_ai_progress(cur: int, total: int) -> void:
 	if pending_bubble != null and is_instance_valid(pending_bubble):

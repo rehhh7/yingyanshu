@@ -261,12 +261,15 @@ func _ready() -> void:
 			(model_card.get_meta("le") as LineEdit).text = pre2[2]
 			UI.toast(self, "已填入 " + String(pre2[0])))
 	ai_box.add_child(model_card)
+	var vmodel_card := _input_row("视觉模型（识图/拍照导入用）", String(DB.settings.get("api_vision_model", "deepseek-v4-flash-vision-exp")), false,
+		func(t: String): DB.settings["api_vision_model"] = t.strip_edges())
+	ai_box.add_child(vmodel_card)
 	var save_ai := UI.button("保存 AI 设置", p.accent, Color.WHITE, 30)
 	save_ai.pressed.connect(func():
 		DB.save_settings()
 		UI.toast(self, "已保存"))
 	ai_box.add_child(save_ai)
-	ai_box.add_child(UI.label("Key 只保存在本机，不会上传。DeepSeek 官方模型填 deepseek-v4-flash（快、便宜）或 deepseek-v4-pro（更强，支持思考链）；旧型号 deepseek-chat 已于 2026-07 退役。", 24, p.sub, true))
+	ai_box.add_child(UI.label("Key 只保存在本机，不会上传。DeepSeek 官方模型填 deepseek-v4-flash（快、便宜）或 deepseek-v4-pro（更强，支持思考链）；旧型号 deepseek-chat 已于 2026-07 退役。带图提问/拍照导入时自动改用视觉模型 deepseek-v4-flash-vision-exp（识图不加价，每张图最多按 384 token 计费）。", 24, p.sub, true))
 
 	# ---- AI 长期记忆管理 ----
 	ai_box.add_child(UI.label("AI 长期记忆：助手会记住你的偏好、薄弱点等，之后每次对话自动携带；也可以在 AI 页直接对它说「记住：……」或「忘掉……」：", 24, p.sub, true))
@@ -306,7 +309,7 @@ func _ready() -> void:
 			_export_and_maybe_share(DB.export_all(), "英眼书备份.json", "*.json;JSON;application/json", "application/json")))
 	data_box.add_child(exp_json)
 
-	data_box.add_child(UI.label("导入单词：粘贴文本或选择文件（docx / txt / md）。「本地整理」不联网，程序自动识别「单词/词组 + 释义」、检索词库查重、放入新的 Day 分组，逐条确认后入库；带「# 组名」标题的文件（含互传收到的文件）会按组名直接入库；格式太杂乱时可用「交给 AI 整理」。兼容旧版 JSON 备份。", 26, p.sub, true))
+	data_box.add_child(UI.label("导入单词：粘贴文本或选择文件（docx / txt / md），也可以拍一张单词表照片用「拍照识图导入」（联网，DeepSeek 视觉模型识别后自动填入）。「本地整理」不联网，程序自动识别「单词/词组 + 释义」、检索词库查重、放入新的 Day 分组，逐条确认后入库；带「# 组名」标题的文件（含互传收到的文件）会按组名直接入库；格式太杂乱时可用「交给 AI 整理」。兼容旧版 JSON 备份。", 26, p.sub, true))
 	# 可识别格式示例（折叠起来，需要时点开）
 	var fmt_g := _group("📋 能识别的格式（点开看示例）", false)
 	data_box.add_child(fmt_g)
@@ -340,6 +343,9 @@ func _ready() -> void:
 	var pick := UI.button("📂 选择文件导入（docx / txt / md / json）", p.panel2, p.text, 28)
 	pick.pressed.connect(func(): _pick_import_file(paste))
 	data_box.add_child(pick)
+	var pick_img := UI.button("📷 拍照识图导入（拍一张单词表照片，DeepSeek 视觉模型识别）", p.panel2, p.text, 28)
+	pick_img.pressed.connect(func(): _pick_import_image(paste, parse_lbl))
+	data_box.add_child(pick_img)
 	var import_local := UI.button("本地整理导入（不联网）", p.accent, Color.WHITE, 30)
 	import_local.pressed.connect(func():
 		if paste.text.strip_edges() == "":
@@ -510,6 +516,36 @@ func _export_with_save_as(src_path: String, default_name: String, filter: String
 		default_name, func(): UI.toast(self, "已导出：" + src_path))
 
 ## 文件导入：docx/txt/md 读取到输入框（docx 自动解包为纯文本）
+## 拍照识图导入：选一张单词表照片 → DeepSeek 视觉模型提取成文本 → 放进输入框走本地解析
+func _pick_import_image(paste: TextEdit, parse_lbl: Label) -> void:
+	if String(DB.settings.get("api_key", "")) == "":
+		UI.toast(self, "请先在「AI API」里填写 API Key（识图走视觉模型）")
+		return
+	UI.file_dialog(self, "选择单词表照片（jpg / png / webp）",
+		DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
+		["*.jpg,*.jpeg,*.png,*.webp;图片;image/jpeg,image/png,image/webp"],
+		func(ok: bool, paths: PackedStringArray, _i: int):
+			if ok and not paths.is_empty():
+				_recognize_image(paths[0], paste, parse_lbl))
+
+func _recognize_image(path: String, paste: TextEdit, parse_lbl: Label) -> void:
+	var data_url := UI.image_to_data_url(path)
+	if data_url == "":
+		UI.toast(self, "图片读取失败")
+		return
+	parse_lbl.text = "📷 AI 识图中（几秒到十几秒）……"
+	var prompt := "这张图里是一份英语单词/词组表。请把里面的词条完整提取成纯文本，每行一条：\n单词行格式：单词 音标（图里有就写，没有就省略） 词性+中文释义\n词组行格式：词组 = 中文释义\n要求：按图中顺序、一条不漏、不要解释、不要输出其他任何内容。"
+	var err_box := [""]
+	var reply: String = await AI.request_vision(prompt, data_url, err_box)
+	if not is_inside_tree():
+		return
+	if reply.strip_edges() == "":
+		var why := String(err_box[0])
+		parse_lbl.text = "❌ 识图失败：%s" % (why if why != "" else "请检查网络 / API Key / 视觉模型名")
+		return
+	paste.text = reply.strip_edges()   # 触发 text_changed → 本地整理自动解析预览
+	UI.toast(self, "识别完成，已放入输入框")
+
 func _pick_import_file(paste: TextEdit) -> void:
 	UI.file_dialog(self, "选择要导入的文件",
 		DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
@@ -888,6 +924,7 @@ func _backup_rename_dialog(fname: String) -> void:
 	le.text = DB.get_backup_label(fname)
 	le.custom_minimum_size = Vector2(0, 76)
 	le.add_theme_font_size_override("font_size", 30)
+	UI.attach_edit_menu(le)
 	var sh := UI.sheet(self, "重命名备份", "保存", "取消", func():
 		var err := DB.rename_backup(fname, le.text)
 		if err != "":

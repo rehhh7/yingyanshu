@@ -154,6 +154,9 @@ func _build_groups() -> void:
 		return
 	var p := UI.palette()
 	var groups: PackedStringArray = DB.word_groups if kind == "words" else DB.phrase_groups
+	if groups.is_empty():
+		_show_empty_library()
+		return
 	var main := _main()
 	# 宽屏多列网格，竖屏单列
 	var cols := _cols()
@@ -202,6 +205,26 @@ func _build_groups() -> void:
 		btn_box.add_child(dict_btn)
 		flow.add_child(card)
 		UI.fade_in(card, minf(flow.get_child_count() * 0.03, 0.2))   # 分组卡片流水渐入
+
+## 空词库引导：用户清空词库后（设置→回滚与重置），主页不再是白页
+func _show_empty_library() -> void:
+	var p := UI.palette()
+	var card := UI.panel()
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 16)
+	card.add_child(vb)
+	var t := UI.label("📭 词库是空的", 34, p.text, true)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vb.add_child(t)
+	vb.add_child(UI.label("去「设置 → 数据管理」导入你的单词表：\n· 粘贴文本或选择文件（txt / md / docx）\n· 两台手机互传（局域网 / 蓝牙）\n导入的词条会自动分组、查重，逐条确认后入库。", 26, p.sub, true))
+	var go := UI.button("📥 去导入", p.accent, Color.WHITE, 30)
+	go.custom_minimum_size = Vector2(0, 84)
+	go.pressed.connect(func():
+		var m := _main()
+		if m != null and m.has_method("switch_tab"):
+			m.switch_tab(4))
+	vb.add_child(go)
+	list_box.add_child(card)
 
 # ---------------- 分组长按重命名 ----------------
 var _lp_msec := 0
@@ -258,6 +281,7 @@ func _rename_dialog(k: String, old_name: String) -> void:
 	le.text = old_name
 	le.custom_minimum_size = Vector2(0, 76)
 	le.add_theme_font_size_override("font_size", 30)
+	UI.attach_edit_menu(le)
 	var sh := UI.sheet(self, "重命名分组", "保存", "取消", func():
 		var err := DB.rename_group(k, old_name, le.text)
 		if err != "":
@@ -304,6 +328,7 @@ func _edit_dialog(k: String, it: Dictionary) -> void:
 		le.text = String(f[2])
 		le.custom_minimum_size = Vector2(0, 68)
 		le.add_theme_font_size_override("font_size", 28)
+		UI.attach_edit_menu(le)
 		fields[f[0]] = le
 	var sh := UI.sheet(self, ("编辑" if not it.is_empty() else "添加") + ("单词" if is_word else "词组"), "保存", "取消", func():
 		var ops := {"add_words": [], "add_phrases": [], "remove_words": [], "remove_phrases": []}
@@ -367,6 +392,9 @@ func _build_table() -> void:
 		var key := "w" if wl_kind == "words" else "en"
 		wl_items.sort_custom(func(a, b):
 			return String(a.get(key, "")).nocasecmp_to(String(b.get(key, ""))) < 0)
+	if wl_items.is_empty():
+		_show_empty_library()
+		return
 	wl_shown = 0
 	var cols := _cols()
 	_last_cols = cols

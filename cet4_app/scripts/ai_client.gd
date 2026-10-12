@@ -12,13 +12,13 @@ func is_busy_for(sid: String) -> bool:
 	return busy and current_session == sid
 
 # ---------------- 入口 ----------------
-func start_single(sid: String, sys: String, messages: Array) -> void:
+func start_single(sid: String, sys: String, messages: Array, image_url := "") -> void:
 	if busy:
 		return
 	busy = true
 	current_session = sid
 	_arm_watchdog(sid)
-	_run_single(sid, sys, messages)
+	_run_single(sid, sys, messages, image_url)
 
 func start_batch(sid: String, sys_base: String, user_text: String, chunks: Array) -> void:
 	if busy:
@@ -36,13 +36,36 @@ func _arm_watchdog(sid: String) -> void:
 			_commit(sid, "请求超时，请检查网络或 API 设置后重试"))
 
 # ---------------- 流程 ----------------
-func _run_single(sid: String, sys: String, messages: Array) -> void:
+func _run_single(sid: String, sys: String, messages: Array, image_url := "") -> void:
 	var msgs := [{"role": "system", "content": sys}]
+	if image_url != "" and not messages.is_empty():
+		# 带图：最后一条用户消息升级为多模态（文本+图片），走视觉模型
+		var last: Dictionary = (messages[-1] as Dictionary).duplicate()
+		last["content"] = [
+			{"type": "text", "text": String(last.get("content", ""))},
+			{"type": "image_url", "image_url": {"url": image_url}}]
+		messages = messages.duplicate()
+		messages[messages.size() - 1] = last
 	msgs.append_array(messages)
-	var d := await _request(msgs)
+	var d := await _request(msgs, _vision_model() if image_url != "" else "")
 	var content: String = d.get("content", "")
+	if content == "" and d.has("error"):
+		content = "请求失败：" + String(d["error"])
 	# 单次请求也要提取词库修改 JSON，挂到消息上供气泡下的确认按钮使用
 	_commit(sid, content, d.get("reasoning", ""), extract_ops(content))
+
+func _vision_model() -> String:
+	return String(DB.settings.get("api_vision_model", "deepseek-v4-flash-vision-exp"))
+
+## 独立视觉请求（不占用会话 busy）：设置页「拍照识图导入」用；失败返回 ""，错误详情进 error_out
+func request_vision(prompt: String, data_url: String, error_out: Array = []) -> String:
+	var d := await _request([
+		{"role": "user", "content": [
+			{"type": "text", "text": prompt},
+			{"type": "image_url", "image_url": {"url": data_url}}]}], _vision_model())
+	if not error_out.is_empty():
+		error_out[0] = String(d.get("error", ""))
+	return String(d.get("content", ""))
 
 func _run_batch(sid: String, sys_base: String, user_text: String, chunks: Array) -> void:
 	var truncated := false
@@ -98,11 +121,11 @@ func _commit(sid: String, content: String, reasoning := "", ops := {}) -> void:
 	finished.emit(sid)
 
 # ---------------- 网络 ----------------
-func _request(messages: Array) -> Dictionary:
+func _request(messages: Array, model := "") -> Dictionary:
 	var key := String(DB.settings.get("api_key", ""))
 	var url := String(DB.settings.get("api_base", "https://api.deepseek.com")).trim_suffix("/") + "/v1/chat/completions"
 	var body := JSON.stringify({
-		"model": String(DB.settings.get("api_model", "deepseek-v4-flash")),
+		"model": model if model != "" else String(DB.settings.get("api_model", "deepseek-v4-flash")),
 		"messages": messages,
 		"stream": false})
 	var rq := HTTPRequest.new()
@@ -112,19 +135,26 @@ func _request(messages: Array) -> Dictionary:
 		HTTPClient.METHOD_POST, body)
 	if err != OK:
 		rq.queue_free()
-		return {}
+		return {"error": "请求发起失败（错误码 %d）" % err}
 	var resp = await rq.request_completed
 	rq.queue_free()
 	var result: int = resp[0]
 	var code: int = resp[1]
 	if result != HTTPRequest.RESULT_SUCCESS:
-		return {}
-	var d = JSON.parse_string((resp[3] as PackedByteArray).get_string_from_utf8())
+		return {"error": "网络错误（%d），请检查网络连接" % result}
+	var raw := (resp[3] as PackedByteArray).get_string_from_utf8()
+	var d = JSON.parse_string(raw)
 	if code == 200 and d is Dictionary and d.has("choices"):
 		var msg_d: Dictionary = d["choices"][0]["message"]
 		return {"content": String(msg_d.get("content", "")),
 			"reasoning": String(msg_d.get("reasoning_content", ""))}
-	return {}
+	# 把服务端错误原文带回去（模型名不对、Key 无效等，方便用户排查）
+	var detail := raw.left(220)
+	if d is Dictionary and d.has("error"):
+		var e = d["error"]
+		if e is Dictionary:
+			detail = String(e.get("message", detail))
+	return {"error": "HTTP %d：%s" % [code, detail]}
 
 # ---------------- 记忆 JSON 提取 ----------------
 ## 提取回复末尾的记忆操作块 ```json {"memory_add":[], "memory_remove":[]} ```

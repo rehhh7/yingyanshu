@@ -1,0 +1,9 @@
+[config]
+name="YysKit"
+binary_type="local"
+binary="YysKit.aar"
+
+[dependencies]
+local=[]
+remote=[]
+custom_maven_repos=[]

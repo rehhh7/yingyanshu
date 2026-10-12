@@ -15,7 +15,7 @@ const MEMORY_PATH := "user://ai_memory.json"
 const BACKUP_DIR := "user://backups"
 const EXPORT_DIR := "user://exports"
 
-const VERSION := "0.9.16"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
+const VERSION := "0.9.17"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
 
 ## 读取内置更新日志；only_latest=true 时只取最新一个版本的段落
 static func changelog_text(only_latest := false) -> String:
@@ -94,6 +94,21 @@ func load_builtin() -> void:
 	else:
 		_load_builtin_json() # 兼容旧版 JSON
 	_apply_group_renames()
+	_apply_group_deletes()
+
+## 内置词库每次从源文件重载，分组删除也要在这里重放才能持久
+func _apply_group_deletes() -> void:
+	var dl: Dictionary = settings.get("group_deletes", {})
+	var wd: Dictionary = dl.get("words", {})
+	var pd: Dictionary = dl.get("phrases", {})
+	if wd.is_empty() and pd.is_empty():
+		return
+	for i in range(words.size() - 1, -1, -1):
+		if wd.has(String(words[i].get("day", ""))):
+			words.remove_at(i)
+	for i in range(phrases.size() - 1, -1, -1):
+		if pd.has(String(phrases[i].get("sec", ""))):
+			phrases.remove_at(i)
 
 ## 内置词库每次从源文件重载，分组改名要在这里重放才能持久
 func _apply_group_renames() -> void:
@@ -560,8 +575,11 @@ static func _is_pos_tag(t: String) -> bool:
 ## JSONL（每行一个 JSON）、PDF 双栏合并行自动拆分
 ## 返回 {words:[{w,p,m,day,syn,sim}], phrases:[{en,cn,sec}], unknown:[String], dup:[String]}
 func parse_import_text(text: String) -> Dictionary:
+	return _parse_word_lines(text, next_day_name())
+
+## 逐行解析内核：词条归入指定分组（互传 Markdown 切组后逐组复用）
+func _parse_word_lines(text: String, day: String) -> Dictionary:
 	var out := {"words": [], "phrases": [], "unknown": [], "dup": []}
-	var day := next_day_name()
 	var existing_w := {}
 	for w in words:
 		existing_w[word_id(w)] = true
@@ -768,6 +786,150 @@ static func _split_merged_row(cn: String, re_word: RegEx) -> Array:
 			return [left, String(toks[i]), right]
 	return []
 
+# ================= 互传固定格式（Markdown）=================
+## 格式约定：
+##   # 组名            ← 父项目（分组）
+##   word /音标/ 释义   ← 子项目（单词，释义内含词性前缀）
+##   take off 起飞      ← 子项目（词组：英文部分含空格即自动识别）
+## 接收端按 "# 组名" 切分，逐组走 _parse_word_lines 解析入库
+
+## 导出 Markdown。kind: "words" / "phrases" / ""（两者）；group_filter 非空时只导该组；
+## custom_only 为 true 时只导自定义词条（整库互传用，内置 605 词对方本来就有）
+func export_groups_md(kind := "", group_filter := "", custom_only := false) -> String:
+	var lines := PackedStringArray()
+	if kind == "words" or kind == "":
+		_append_md_section(lines, words, "day", group_filter, custom_only, true)
+	if kind == "phrases" or kind == "":
+		_append_md_section(lines, phrases, "sec", group_filter, custom_only, false)
+	return "\n".join(lines).strip_edges() + "\n"
+
+func _append_md_section(lines: PackedStringArray, items: Array, key: String,
+		group_filter: String, custom_only: bool, is_word: bool) -> void:
+	var by_group := {}
+	var order := PackedStringArray()
+	for it in items:
+		if custom_only and not it.get("custom", false):
+			continue
+		var g := String(it.get(key, "自定义"))
+		if group_filter != "" and g != group_filter:
+			continue
+		if not by_group.has(g):
+			by_group[g] = []
+			order.append(g)
+		by_group[g].append(it)
+	for g in order:
+		lines.append("# " + g)
+		for it in by_group[g]:
+			if is_word:
+				var l := String(it.get("w", ""))
+				if String(it.get("p", "")) != "":
+					l += " " + String(it["p"])
+				l += " " + String(it.get("m", ""))
+				lines.append(l)
+			else:
+				lines.append(String(it.get("en", "")) + " " + String(it.get("cn", "")))
+		lines.append("")
+
+## 互传整库载荷：自定义词条的 Markdown（学习记录不传，接收方保留自己的进度）
+func build_transfer_md() -> String:
+	return "# 英眼书互传\n\n" + export_groups_md("", "", true)
+
+## 按 "# 组名" 切分并逐组解析。返回 [{name, res}]；没有标题时全部进新 Day
+func parse_groups_md(text: String) -> Array:
+	var out: Array = []
+	var cur_name := ""
+	var cur := PackedStringArray()
+	for raw in text.split("\n", false):
+		var line := String(raw).strip_edges()
+		if line.begins_with("# ") and line.length() > 2:
+			if cur_name != "" or not cur.is_empty():
+				var gname := cur_name if cur_name != "" else next_day_name()
+				out.append({"name": gname, "res": _parse_word_lines("\n".join(cur), gname)})
+			cur_name = line.substr(2).strip_edges()
+			cur = PackedStringArray()
+		else:
+			cur.append(raw)
+	if cur_name != "" or not cur.is_empty():
+		var gname2 := cur_name if cur_name != "" else next_day_name()
+		out.append({"name": gname2, "res": _parse_word_lines("\n".join(cur), gname2)})
+	# 丢弃「英眼书互传」文件标记组（空组）
+	var cleaned: Array = []
+	for g in out:
+		var r: Dictionary = g["res"]
+		if g["name"] == "英眼书互传" and r["words"].is_empty() and r["phrases"].is_empty():
+			continue
+		cleaned.append(g)
+	return cleaned
+
+## 导入互传 Markdown。overwrite_groups=true：同名组的自定义词条先清空再写入（覆盖原词汇）；
+## false：只并入自己没有的词条（扩展词汇）。返回 {err, added_w, added_p, groups}
+func import_groups_md(text: String, overwrite_groups := false) -> Dictionary:
+	backup_libraries("互传导入前自动备份")
+	var custom_w: Array = _read_json(CUSTOM_WORDS_PATH, [])
+	var custom_p: Array = _read_json(CUSTOM_PHRASES_PATH, [])
+	if overwrite_groups:
+		# 先扫出组名清单，把同名组从自定义库与内存里一并清掉，再解析（否则查重会把自己的旧词条挡住）
+		var names := {}
+		for raw in text.split("\n", false):
+			var l := String(raw).strip_edges()
+			if l.begins_with("# ") and l.length() > 2:
+				names[l.substr(2).strip_edges()] = true
+		custom_w = custom_w.filter(func(it): return not names.has(String(it.get("day", ""))))
+		custom_p = custom_p.filter(func(it): return not names.has(String(it.get("sec", ""))))
+		for i in range(words.size() - 1, -1, -1):
+			if names.has(String(words[i].get("day", ""))) and words[i].get("custom", false):
+				words.remove_at(i)
+		for i in range(phrases.size() - 1, -1, -1):
+			if names.has(String(phrases[i].get("sec", ""))) and phrases[i].get("custom", false):
+				phrases.remove_at(i)
+	var groups := parse_groups_md(text)
+	if groups.is_empty():
+		return {"err": "没有识别到任何词条", "added_w": 0, "added_p": 0, "groups": 0}
+	var added_w := 0
+	var added_p := 0
+	for g in groups:
+		var res: Dictionary = g["res"]
+		for w in res["words"]:
+			custom_w.append(w)
+			added_w += 1
+		for ph in res["phrases"]:
+			custom_p.append(ph)
+			added_p += 1
+	_write_json(CUSTOM_WORDS_PATH, custom_w)
+	_write_json(CUSTOM_PHRASES_PATH, custom_p)
+	load_custom()
+	rebuild_library()
+	return {"err": "", "added_w": added_w, "added_p": added_p, "groups": groups.size()}
+
+## 删除分组：自定义词条物理删除；内置词条靠 deletes 映射在重载时重放
+func delete_group(kind: String, group: String) -> String:
+	backup_libraries("删除分组前自动备份")
+	var dl: Dictionary = settings.get("group_deletes", {"words": {}, "phrases": {}})
+	var map: Dictionary = dl.get(kind, {})
+	map[group] = true
+	# 若组被改名过，把原始名也标上，双保险
+	var rn: Dictionary = settings.get("group_renames", {"words": {}, "phrases": {}})
+	for origin in rn.get(kind, {}):
+		if rn[kind][origin] == group:
+			map[origin] = true
+	dl[kind] = map
+	settings["group_deletes"] = dl
+	save_settings()
+	var items := words if kind == "words" else phrases
+	var key := "day" if kind == "words" else "sec"
+	for i in range(items.size() - 1, -1, -1):
+		if String(items[i].get(key, "")) == group:
+			items.remove_at(i)
+	var path := CUSTOM_WORDS_PATH if kind == "words" else CUSTOM_PHRASES_PATH
+	var custom_arr: Array = _read_json(path, [])
+	var kept: Array = []
+	for it in custom_arr:
+		if String(it.get(key, "")) != group:
+			kept.append(it)
+	_write_json(path, kept)
+	rebuild_library()
+	return ""
+
 ## 备份内容（内存版，导出文件与局域网互传共用）
 func build_backup_payload() -> Dictionary:
 	return {
@@ -867,6 +1029,37 @@ func import_backup(json_text: String) -> String:
 	if d.get("type") == "cet4_wordlib" or d.has("words") or d.has("phrases"):
 		return import_wordlib(json_text)
 	return "无法识别的备份格式"
+
+## 合并模式导入（互传「扩展词汇」选项）：只把对方自定义词库里我没有的词条并进来，
+## 学习进度与移除名单保持本机不动。返回 "" 成功，否则错误文案
+func merge_backup(json_text: String) -> String:
+	var d = JSON.parse_string(json_text)
+	if not (d is Dictionary) or d.get("type") != "cet4_backup":
+		return "无法识别的备份格式"
+	backup_libraries("合并前自动备份")
+	var cur_w: Array = _read_json(CUSTOM_WORDS_PATH, [])
+	var seen_w := {}
+	for w in cur_w:
+		seen_w[word_id(w)] = true
+	for w in d.get("custom_words", []):
+		var id := word_id(w)
+		if id != "" and not seen_w.has(id):
+			cur_w.append(w)
+			seen_w[id] = true
+	var cur_p: Array = _read_json(CUSTOM_PHRASES_PATH, [])
+	var seen_p := {}
+	for p in cur_p:
+		seen_p[String(p.get("en", "")).to_lower().strip_edges()] = true
+	for p in d.get("custom_phrases", []):
+		var pid: String = String(p.get("en", "")).to_lower().strip_edges()
+		if pid != "" and not seen_p.has(pid):
+			cur_p.append(p)
+			seen_p[pid] = true
+	_write_json(CUSTOM_WORDS_PATH, cur_w)
+	_write_json(CUSTOM_PHRASES_PATH, cur_p)
+	load_custom()
+	rebuild_library()
+	return ""
 
 ## 词库热更新：接受 {type:cet4_wordlib, words:[...], phrases:[...]} 或裸 {words/phrases}
 func import_wordlib(json_text: String) -> String:

@@ -4,7 +4,8 @@ extends RefCounted
 
 static var _player: AudioStreamPlayer = null
 
-## 单词发音两级兜底：① 内置语音包（605 词真人录音）② 系统 TTS
+## 单词发音三级兜底：① 内置语音包（605 词真人录音）② 系统 TTS（有英文语音时）
+## ③ 无系统语音且开启「联网发音」时拉有道真人发音（拉取失败后退回系统 TTS）
 ## british 暂保留给系统 TTS 的口音偏好（语音包目前只有美式）
 static func play_word(word: String, british := false) -> void:
 	var id := word.to_lower().strip_edges()
@@ -19,6 +20,12 @@ static func play_word(word: String, british := false) -> void:
 			tree.root.add_child(_player)
 		_player.stream = load(path)
 		_player.play()
+		return
+	if has_english_voice():
+		speak(word, british)
+		return
+	if id != "" and bool(DB.settings.get("online_audio", true)):
+		OnlineAudio.play(id, func(): speak(word, british))
 		return
 	speak(word, british)
 

@@ -214,11 +214,43 @@ func _on_card_gui_input(ev: InputEvent, k: String, group: String) -> void:
 			_lp_pos = ev.position
 		else:
 			if _lp_msec > 0 and Time.get_ticks_msec() - _lp_msec >= 550:
-				_rename_dialog(k, group)
+				_group_menu(k, group)
 			_lp_msec = 0
 	elif ev is InputEventScreenDrag or ev is InputEventMouseMotion:
 		if _lp_msec > 0 and ev.position.distance_to(_lp_pos) > 30.0:
 			_lp_msec = 0   # 拖动滚动不算长按
+
+## 分组长按菜单：重命名 / 分享（局域网+蓝牙）/ 删除
+func _group_menu(k: String, group: String) -> void:
+	UI.vibrate(40)
+	var p := UI.palette()
+	var sh: Dictionary = UI.sheet(self, "分组「%s」" % group, "", "关闭")
+	var body: VBoxContainer = sh["body"]
+	var rn := UI.button("✏️ 重命名分组", p.panel2, p.text, 29)
+	rn.custom_minimum_size = Vector2(0, 80)
+	rn.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		_rename_dialog(k, group))
+	body.add_child(rn)
+	var share := UI.button("📡 分享本组（局域网 / 蓝牙）", p.panel2, p.text, 29)
+	share.custom_minimum_size = Vector2(0, 80)
+	share.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		var md := DB.export_groups_md(k, group)
+		LanSyncDialog.open(self, md, group))
+	body.add_child(share)
+	var del := UI.button("🗑 删除分组", p.panel2, p.danger, 29)
+	del.custom_minimum_size = Vector2(0, 80)
+	del.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		UI.confirm_dialog(self, "删除分组",
+			"「%s」里的词条将一并删除（删除前自动备份，可在 设置 → 词库回滚 还原），确定吗？" % group,
+			func():
+				DB.delete_group(k, group)
+				UI.toast(self, "已删除「%s」" % group)
+				_rebuild(),
+			"删除", "取消", true))
+	body.add_child(del)
 
 func _rename_dialog(k: String, old_name: String) -> void:
 	var p := UI.palette()

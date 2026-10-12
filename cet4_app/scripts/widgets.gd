@@ -292,7 +292,7 @@ static func file_dialog(host: Node, title: String, mode: int, filters: PackedStr
 		toast(host, "无法打开文件管理器（错误码 %d），请截图反馈" % err)
 
 static func confirm_dialog(parent: Node, title: String, text: String, on_ok: Callable,
-		ok_text := "确认", cancel_text := "取消", danger := false) -> Control:
+		ok_text := "确认", cancel_text := "取消", danger := false, on_cancel := Callable()) -> Control:
 	## iOS 风格弹窗：半透明遮罩 + 圆角卡片 + 大字标题 + 两个大按钮（细线分隔）
 	## 点遮罩或「取消」关闭；返回键由 main 通过 ui_dialog 分组统一关闭
 	var p := palette()
@@ -374,13 +374,18 @@ static func confirm_dialog(parent: Node, title: String, text: String, on_ok: Cal
 	ok.add_theme_color_override("font_hover_color", okc.lightened(0.15))
 	ok.add_theme_color_override("font_pressed_color", okc.darkened(0.15))
 	btns.add_child(ok)
-	cancel.pressed.connect(func(): dismiss_dialog(overlay))
+	cancel.pressed.connect(func():
+		dismiss_dialog(overlay)
+		if on_cancel.is_valid():
+			on_cancel.call())
 	ok.pressed.connect(func():
 		dismiss_dialog(overlay)
 		on_ok.call())
 	dim.gui_input.connect(func(ev: InputEvent):
 		if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
-			dismiss_dialog(overlay))
+			dismiss_dialog(overlay)
+			if on_cancel.is_valid():
+				on_cancel.call())
 	# 必须挂到窗口根节点：挂到容器（设置页/AI页都是 VBoxContainer）里会被容器
 	# 当成普通排版元素挤到屏幕外 —— 这就是"提示框在屏幕外面"的根因
 	var host := parent.get_tree().root if parent.is_inside_tree() else null

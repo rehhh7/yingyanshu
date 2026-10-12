@@ -203,6 +203,19 @@ func _ready() -> void:
 	test_btn.pressed.connect(func(): TTS.speak("apple"))
 	evb.add_child(test_btn)
 	tts_box.add_child(eng_card)
+	# 无系统语音时的联网发音开关（默认开）：只有内置录音和系统 TTS 都不可用时才会联网
+	var oa_card := UI.panel()
+	var oah := HBoxContainer.new()
+	oa_card.add_child(oah)
+	oah.add_child(UI.label("无系统语音时联网发音", 30, p.text))
+	var spo := Control.new()
+	spo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	oah.add_child(spo)
+	oah.add_child(UI.make_switch(bool(DB.settings.get("online_audio", true)), func(on: bool):
+		DB.settings["online_audio"] = on
+		DB.save_settings()))
+	tts_box.add_child(oa_card)
+	tts_box.add_child(UI.label("开启后：手机没有英文语音时，新词自动改用有道词典的真人发音（仅此时联网，听过一次就缓存离线可播）。", 24, p.sub, true))
 
 	await get_tree().process_frame
 	if not is_inside_tree():
@@ -278,13 +291,14 @@ func _ready() -> void:
 	var exp_docx := UI.button("导出备份（Word 文档，可另存/分享）", p.accent, Color.WHITE, 28)
 	exp_docx.pressed.connect(func():
 		UI.double_press(exp_docx, "再按一次确认导出", func():
-			_export_with_save_as(DB.export_docx(), "英眼书备份.docx",
-				"*.docx;Word 文档;application/vnd.openxmlformats-officedocument.wordprocessingml.document")))
+			_export_and_maybe_share(DB.export_docx(), "英眼书备份.docx",
+				"*.docx;Word 文档;application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+				"application/vnd.openxmlformats-officedocument.wordprocessingml.document")))
 	data_box.add_child(exp_docx)
 	var exp_json := UI.button("导出 JSON 数据（用于回导恢复）", p.panel2, p.text, 28)
 	exp_json.pressed.connect(func():
 		UI.double_press(exp_json, "再按一次确认导出", func():
-			_export_with_save_as(DB.export_all(), "英眼书备份.json", "*.json;JSON;application/json")))
+			_export_and_maybe_share(DB.export_all(), "英眼书备份.json", "*.json;JSON;application/json", "application/json")))
 	data_box.add_child(exp_json)
 
 	data_box.add_child(UI.label("导入单词：粘贴文本或选择文件（docx / txt / md）。「本地整理」不联网，程序自动识别「单词/词组 + 释义」、检索词库查重、放入新的 Day 分组，逐条确认后入库；格式太杂乱时可用「交给 AI 整理」。兼容旧版 JSON 备份。", 26, p.sub, true))
@@ -335,8 +349,9 @@ func _ready() -> void:
 			return
 		UI.double_press(import_ai, "再按一次确认", func(): _do_import(paste)))
 	data_box.add_child(import_ai)
-	var lan_btn := UI.button("📡 局域网互传（两台手机互发词库）", p.panel2, p.text, 28)
-	lan_btn.pressed.connect(func(): LanSyncDialog.open(self))
+	var lan_btn := UI.button("📡 局域网 / 蓝牙互传（两台手机互发词库）", p.panel2, p.text, 28)
+	lan_btn.pressed.connect(func():
+		UI.double_press(lan_btn, "再按一次打开互传", func(): LanSyncDialog.open(self)))
 	data_box.add_child(lan_btn)
 
 	await get_tree().process_frame
@@ -456,6 +471,16 @@ func _pick_wallpaper() -> void:
 		DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
 		["*.jpg,*.jpeg;图片;image/jpeg", "*.png;图片;image/png"],
 		_on_wallpaper_picked)
+
+## 导出文件后：安卓上优先弹系统分享面板（可直接发微信/QQ），否则走系统“另存为”
+func _export_and_maybe_share(src_path: String, default_name: String, filter: String, mime: String) -> void:
+	if src_path == "":
+		UI.toast(self, "导出失败")
+		return
+	if Share.file(src_path, mime, "分享备份"):
+		UI.toast(self, "已导出，可在分享面板里发给朋友")
+		return
+	_export_with_save_as(src_path, default_name, filter)
 
 ## 导出文件后弹系统“另存为”，用户自选保存位置/分享
 func _export_with_save_as(src_path: String, default_name: String, filter: String) -> void:

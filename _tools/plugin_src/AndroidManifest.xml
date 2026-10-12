@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.yys.kit">
+
+    <!-- 蓝牙互传（Android 12+ 用新权限；旧系统用经典权限 + 定位用于发现设备） -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
+
+    <application>
+        <meta-data
+            android:name="org.godotengine.plugin.v2.YysKit"
+            android:value="com.yys.kit.YysKit"/>
+        <provider
+            android:name="com.yys.kit.YysShareProvider"
+            android:authorities="${applicationId}.yys_share"
+            android:exported="false"
+            android:grantUriPermissions="true"/>
+    </application>
+</manifest>

@@ -16,6 +16,20 @@ _tools/ipa_test/
 _tools/userdata_backup/
 _tools/words_backup/
 _tools/word_list.tsv
+_tools/gradle-*.zip
+_tools/godlib/
+_tools/dictvoice_test.mp3
+# 插件编译中间产物（源码 _tools/plugin_src/ 与成品 cet4_app/android/plugins/YysKit.aar 均入库）
+_tools/plugin_build/classes/
+_tools/plugin_build/aar/
+_tools/plugin_build/godotlib/
+
+# ---- Gradle 构建产物与引擎库（可从 export_templates 的 android_source.zip 重建）----
+cet4_app/android/build/build/
+cet4_app/android/build/.gradle/
+cet4_app/android/build/libs/
+cet4_app/android/build/src/
+cet4_app/android/build/assetPackInstallTime/
 
 # ---- 截图与临时文件 ----
 _screenshots/

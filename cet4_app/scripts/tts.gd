@@ -23,10 +23,11 @@ static func play_word(word: String, british := false) -> void:
 		_player.stream = load(path)
 		_player.play()
 		return
-	if has_english_voice():
+	if has_lang_voice():
 		speak(word, british)
 		return
-	if id != "" and bool(DB.settings.get("online_audio", true)):
+	# 有道在线发音只覆盖英文词典：非英语没有可靠免费接口，直接回退系统 TTS
+	if id != "" and _lang_prefix() == "en" and bool(DB.settings.get("online_audio", true)):
 		OnlineAudio.play(id, func(): speak(word, british))
 		return
 	speak(word, british)
@@ -44,24 +45,43 @@ static func english_voices() -> Array:
 static func has_english_voice() -> bool:
 	return not english_voices().is_empty()
 
+## 当前学习语言 → TTS 语音地区前缀（自定义语言名兜底取前两位小写）
+static func _lang_prefix() -> String:
+	var lang := DB.study_lang()
+	var map := {"英语": "en", "日语": "ja", "韩语": "ko", "法语": "fr", "德语": "de", "西班牙语": "es",
+		"俄语": "ru", "意大利语": "it", "葡萄牙语": "pt"}
+	if map.has(lang):
+		return String(map[lang])
+	var t := lang.to_lower().strip_edges()
+	return t.left(2) if t.length() >= 2 else "en"
+
+## 系统里有没有当前学习语言的语音
+static func has_lang_voice() -> bool:
+	var pre := _lang_prefix()
+	for v in DisplayServer.tts_get_voices():
+		if String(v.get("locale", "")).to_lower().replace("-", "_").begins_with(pre):
+			return true
+	return false
+
 static func _pick_voice(british: bool) -> String:
+	var pre := _lang_prefix()
 	var want := "en_gb" if british else "en_us"
 	var voices := DisplayServer.tts_get_voices()
 	var fallback := ""
 	for v in voices:
 		var loc := String(v.get("locale", "")).to_lower().replace("-", "_")
 		var id := String(v.get("id", ""))
-		if not loc.begins_with("en"):
+		if not loc.begins_with(pre):
 			continue
 		if fallback == "":
 			fallback = id
 		if loc == want:
 			return id
-	# 精确匹配不到就模糊匹配
+	# 精确匹配不到就模糊匹配（英语区分英美口音，其他语言同前缀即可）
 	for v in voices:
 		var loc := String(v.get("locale", "")).to_lower().replace("-", "_")
 		var id := String(v.get("id", ""))
-		if not loc.begins_with("en"):
+		if not loc.begins_with(pre):
 			continue
 		if british and ("gb" in loc or "uk" in loc):
 			return id

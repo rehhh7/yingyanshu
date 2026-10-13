@@ -364,6 +364,7 @@ func _input(event: InputEvent) -> void:
 		if event.pressed:
 			_touch.active = true
 			_touch.moved = false
+			UI.touch_scrolled = false   # 新一次触摸开始，重置滑动标志（背板等抬起时判定用）
 			_touch.sx = event.position.x
 			_touch.sy = event.position.y
 			_fling_v = 0.0
@@ -385,6 +386,7 @@ func _input(event: InputEvent) -> void:
 		if not _touch.moved and Vector2(_touch.sx, _touch.sy).distance_to(event.position) < TOUCH_DEADZONE:
 			return   # 死区内不滚动也不吞事件：轻微抖动不会被当成滑动，按钮照常可用
 		_touch.moved = true
+		UI.touch_scrolled = true   # 滑动为第一层：本次手势内所有「按下即触发」的交互全部压下
 		sv.scroll_vertical -= int(event.relative.y)
 		_fling_sv = sv
 		_samples.append([Time.get_ticks_msec(), event.position.y])

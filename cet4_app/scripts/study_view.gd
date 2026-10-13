@@ -188,22 +188,33 @@ func _refresh() -> void:
 	if kind == "words" and String(it.get("p", "")) != "":
 		front_box.add_child(_clabel(String(it.p), 34, p.sub))
 
+	# 小语种优化：非英语且有读音标注时，朗读按钮读「音标/假名读音」而不是读原文
+	# （日语汉字等原文直接喂 TTS 读音不可靠，读假名标注才对）
+	var phon_text := String(it.get("p", "")) if kind == "words" else ""
+	var speak_text := title_text
+	var speak_label := "🔊 朗读"
+	if phon_text != "" and DB.study_lang() != "英语":
+		speak_text = phon_text
+		speak_label = "🔊 读音标"
 	var tts_row := HBoxContainer.new()
 	tts_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	tts_row.add_theme_constant_override("separation", 14)
 	front_box.add_child(tts_row)
-	var speak := UI.button("🔊 朗读", p.panel2, p.text, 30)
+	var speak := UI.button(speak_label, p.panel2, p.text, 30)
 	speak.custom_minimum_size = Vector2(240, 84)
-	speak.pressed.connect(func(): TTS.play_word(title_text))
+	speak.pressed.connect(func(): TTS.play_word(speak_text))
 	tts_row.add_child(speak)
 	rate_btn = UI.button("语速 %.1fx" % float(DB.settings.get("tts_rate", 1.0)), p.panel2, p.text, 28)
 	rate_btn.custom_minimum_size = Vector2(190, 84)
 	rate_btn.pressed.connect(_toggle_rate)
 	tts_row.add_child(rate_btn)
 
-	var hint := UI.label("点击卡片查看释义", 26, p.sub)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	front_box.add_child(hint)
+	# 翻面改成真按钮（整卡点击翻面保留）：有明确可点的入口，不用猜哪里能点
+	var flip_btn := UI.button("👆 点击查看释义", p.accent, Color.WHITE, 26)
+	flip_btn.custom_minimum_size = Vector2(300, 76)
+	flip_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	flip_btn.pressed.connect(_flip)
+	front_box.add_child(flip_btn)
 
 	# ---- 背面 ----
 	if kind == "words":
@@ -334,7 +345,11 @@ func _list_row(it: Dictionary, p: Dictionary) -> Control:
 	hb.add_child(star)
 	var spk := UI.button("🔊", p.panel2, p.text, 30)
 	spk.custom_minimum_size = Vector2(88, 88)
-	spk.pressed.connect(func(): TTS.play_word(title_text))
+	# 小语种读音标/假名（与卡片正面同一逻辑）
+	var spk_text := title_text
+	if kind == "words" and String(it.get("p", "")) != "" and DB.study_lang() != "英语":
+		spk_text = String(it.p)
+	spk.pressed.connect(func(): TTS.play_word(spk_text))
 	hb.add_child(spk)
 	if kind == "words" and not it.get("syn", []).is_empty():
 		var detail := UI.label("", 26, p.sub, true)

@@ -346,6 +346,16 @@ func _build_quick() -> void:
 	vq.custom_minimum_size = Vector2(0, 64)
 	vq.pressed.connect(func(): _pick_image("把这张图片里的%s单词/词组整理成词库（注意查重、拼写检查，新单词放到新的 Day 分组）" % DB.study_lang()))
 	quick_container.add_child(vq)
+	# 固定次位：📝 出试卷——用词库（优先生词）出一份文本试卷，自动带上单词/词组/生词上下文
+	var pq := UI.button("📝 出试卷", p.accent, Color.WHITE, 24)
+	pq.custom_minimum_size = Vector2(0, 64)
+	pq.pressed.connect(func():
+		ctx_checks["words"].button_pressed = true
+		ctx_checks["phrases"].button_pressed = true
+		ctx_checks["starred"].button_pressed = true
+		input.text = "用我词库里的单词和词组出一份%s试卷（优先生词表里的）：一、看原文选中文 20 题（4 选 1）；二、看中文写原文 10 题；三、词组填空 5 题。先只出题不要答案，最后单独附一页「答案」。出完等我做完发给你批改。" % DB.study_lang()
+		UI.toast(self, "已填好出题指令并带上词库，点「发送」"))
+	quick_container.add_child(pq)
 	for qp in DB.settings.get("quick_prompts", []):
 		var b := UI.button(String(qp.name), p.panel2, p.text, 24)
 		b.custom_minimum_size = Vector2(0, 64)
@@ -480,7 +490,7 @@ func _clear_image() -> void:
 func _needs_library_context(text: String) -> bool:
 	if ctx_checks["file"].button_pressed and attached_file_text.strip_edges() != "":
 		return true
-	for kw in ["整理", "添加", "导入", "加入", "新增", "词库", "单词表", "录入"]:
+	for kw in ["整理", "添加", "导入", "加入", "新增", "词库", "单词表", "录入", "试卷", "出题", "批改"]:
 		if kw in text:
 			return true
 	return false

@@ -37,6 +37,10 @@ static func ui_scale() -> float:
 	## 全局控件缩放系数（设置页可调，0.7~1.6）
 	return clampf(float(DB.settings.get("ui_scale", 1.0)), 0.7, 1.6)
 
+## 全局滑动状态（main.gd 在拖动超过死区时置 true）：按下即触发的交互（弹窗背板等）
+## 必须等「抬起且未滑动」才执行——滑动永远优先，主动点击才算点击
+static var touch_scrolled := false
+
 static func font_scale() -> float:
 	## 字体缩放系数（设置页可调）
 	return clampf(float(DB.settings.get("font_scale", 1.0)), 0.7, 1.8)
@@ -92,7 +96,8 @@ static func fade_in(c: Control, delay := 0.0) -> void:
 		tw.tween_interval(delay)
 	tw.tween_property(c, "modulate:a", 1.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
-static func label(text: String, size := 32, color := Color.WHITE, wrap := false) -> Label:
+static func label(text: String, size := 32, color := Color.WHITE, wrap := true) -> Label:
+	## wrap 默认开：说明性文字一律自动换行，大字体下不再顶出屏幕（长列表请用 row_label，wrap=false 保性能）
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", int(size * font_scale()))
@@ -107,7 +112,8 @@ static func button(text: String, color: Color, text_color := Color.WHITE, size :
 	var fs := font_scale()
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(0, 84 * sc * clampf(fs, 0.9, 1.3))
+	b.clip_text = true   # 大字体/大按钮时文字钳在按钮内，不画出屏幕外
+	b.custom_minimum_size = Vector2(0, 92 * sc * clampf(fs, 0.9, 1.3))
 	b.add_theme_font_size_override("font_size", int(size * sc * fs))
 	b.add_theme_color_override("font_color", text_color)
 	b.add_theme_stylebox_override("normal", style_box(color, 14))
@@ -141,7 +147,7 @@ static func icon_btn(text: String, color: Color, size := 36) -> Button:
 	b.add_theme_color_override("font_color", color)
 	b.add_theme_color_override("font_hover_color", color.lightened(0.15))
 	b.add_theme_color_override("font_pressed_color", color.darkened(0.2))
-	var s := 76.0 * ui_scale()
+	var s := 84.0 * ui_scale()   # 图标按钮默认加大（初始按钮过小的反馈）
 	b.custom_minimum_size = Vector2(s, s)
 	return b
 
@@ -382,10 +388,12 @@ static func confirm_dialog(parent: Node, title: String, text: String, on_ok: Cal
 		dismiss_dialog(overlay)
 		on_ok.call())
 	dim.gui_input.connect(func(ev: InputEvent):
-		if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
-			dismiss_dialog(overlay)
-			if on_cancel.is_valid():
-				on_cancel.call())
+		# 抬起且未滑动才算「主动点背板关闭」：手指按下即拖的滑动手势不关弹窗
+		if (ev is InputEventMouseButton and not ev.pressed) or (ev is InputEventScreenTouch and not ev.pressed):
+			if not touch_scrolled:
+				dismiss_dialog(overlay)
+				if on_cancel.is_valid():
+					on_cancel.call())
 	# 必须挂到窗口根节点：挂到容器（设置页/AI页都是 VBoxContainer）里会被容器
 	# 当成普通排版元素挤到屏幕外 —— 这就是"提示框在屏幕外面"的根因
 	var host := parent.get_tree().root if parent.is_inside_tree() else null
@@ -694,8 +702,9 @@ static func sheet(parent: Node, title: String, ok_text := "确定", cancel_text 
 		if on_ok.is_valid():
 			on_ok.call())
 	dim.gui_input.connect(func(ev: InputEvent):
-		if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
-			dismiss_dialog(overlay))
+		if (ev is InputEventMouseButton and not ev.pressed) or (ev is InputEventScreenTouch and not ev.pressed):
+			if not touch_scrolled:
+				dismiss_dialog(overlay))
 	var host := parent.get_tree().root if parent.is_inside_tree() else null
 	if host == null:
 		host = tree.root
@@ -836,8 +845,9 @@ static func dropdown(anchor: Control, items: Array, on_pick: Callable) -> void:
 		clampf(arect.position.x, 24.0, maxf(24.0, vp.x - pw - 24.0)),
 		minf(arect.end.y + 8.0, vp.y * 0.42))
 	dim.gui_input.connect(func(ev: InputEvent):
-		if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
-			dismiss_dialog(overlay))
+		if (ev is InputEventMouseButton and not ev.pressed) or (ev is InputEventScreenTouch and not ev.pressed):
+			if not touch_scrolled:
+				dismiss_dialog(overlay))
 	var host := anchor.get_tree().root if anchor.is_inside_tree() else null
 	if host == null:
 		host = tree.root
@@ -914,6 +924,28 @@ static func memory_dialog(parent: Node, count_btn: Button = null) -> void:
 		var lb := label(item_text, 26, p.text, true)
 		lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(lb)
+		# 逐条编辑：记忆是用户自己的数据，写错了能改，不用先删再让 AI 重记
+		var edit := button("✎", p.panel2, p.text, 24)
+		edit.custom_minimum_size = Vector2(72, 56)
+		edit.pressed.connect(func():
+			var te := TextEdit.new()
+			te.text = item_text
+			te.custom_minimum_size = Vector2(0, 160)
+			te.add_theme_font_size_override("font_size", 26)
+			style_textedit(te)
+			tap_lock(te)
+			var on_save := func():
+				var nt := te.text.strip_edges()
+				if nt == "" or nt == item_text:
+					return
+				var idx := DB.ai_memory.find(item_text)
+				if idx >= 0:
+					DB.ai_memory[idx] = nt
+					DB.save_memory()
+					lb.text = nt
+			var esh := sheet(parent, "编辑这条记忆", "保存", "取消", on_save)
+			esh["body"].add_child(te))
+		row.add_child(edit)
 		var del := button("✕", p.panel2, p.danger, 24)
 		del.custom_minimum_size = Vector2(72, 56)
 		del.pressed.connect(func():

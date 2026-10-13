@@ -192,20 +192,20 @@ func _ready() -> void:
 		rate_btn.text = "%.1fx" % r)
 	rh.add_child(rate_btn)
 	tts_box.add_child(rate_card)
-	# 系统语音引擎状态：内置 605 词走录音不受影响，导入新词的兜底依赖系统英文语音
+	# 系统语音引擎状态：按当前学习语言检测（英语用内置录音兜底，小语种全靠系统语音）
 	var eng_card := UI.panel()
 	var evb := VBoxContainer.new()
 	eng_card.add_child(evb)
-	var en_voices := TTS.english_voices()
-	if en_voices.is_empty():
-		evb.add_child(UI.label("系统语音引擎：未检测到英文语音", 28, p.danger))
-		evb.add_child(UI.label("内置单词发音不受影响；但你导入的新词将无法朗读。可到系统「设置 → 无障碍 → 文字转语音（TTS）输出」安装英文语音数据。", 24, p.sub, true))
+	var lang_now := DB.study_lang()
+	if TTS.has_lang_voice():
+		evb.add_child(UI.label("系统语音引擎：已检测到「%s」语音" % lang_now, 28, p.ok))
+		evb.add_child(UI.label("单词走真人录音（英语）；导入的新词由系统引擎朗读。", 24, p.sub, true))
 	else:
-		evb.add_child(UI.label("系统语音引擎：已检测到 %d 个英文语音" % en_voices.size(), 28, p.ok))
-		evb.add_child(UI.label("内置单词用真人录音；导入的新词由系统引擎朗读。", 24, p.sub, true))
+		evb.add_child(UI.label("系统语音引擎：未检测到「%s」语音" % lang_now, 28, p.danger))
+		evb.add_child(UI.label("内置单词发音不受影响；但你导入的新词将无法朗读。可到系统「设置 → 无障碍 → 文字转语音（TTS）输出」安装对应语言的语音数据。", 24, p.sub, true))
 	var test_btn := UI.button("🔊 试听系统发音", p.panel2, p.text, 28)
 	test_btn.custom_minimum_size = Vector2(280, 72)
-	test_btn.pressed.connect(func(): TTS.speak("apple"))
+	test_btn.pressed.connect(func(): TTS.speak("apple" if lang_now == "英语" else "你好"))
 	evb.add_child(test_btn)
 	tts_box.add_child(eng_card)
 	# 无系统语音时的联网发音开关（默认开）：只有内置录音和系统 TTS 都不可用时才会联网

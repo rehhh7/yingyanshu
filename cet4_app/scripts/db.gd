@@ -15,7 +15,7 @@ const MEMORY_PATH := "user://ai_memory.json"
 const BACKUP_DIR := "user://backups"
 const EXPORT_DIR := "user://exports"
 
-const VERSION := "0.9.27"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
+const VERSION := "0.9.28"   # 应用版本号（设置页/AI上下文/更新弹窗统一读这里）
 
 ## 读取内置更新日志；only_latest=true 时只取最新一个版本的段落
 static func changelog_text(only_latest := false) -> String:

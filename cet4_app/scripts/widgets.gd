@@ -96,8 +96,7 @@ static func fade_in(c: Control, delay := 0.0) -> void:
 		tw.tween_interval(delay)
 	tw.tween_property(c, "modulate:a", 1.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
-static func label(text: String, size := 32, color := Color.WHITE, wrap := true) -> Label:
-	## wrap 默认开：说明性文字一律自动换行，大字体下不再顶出屏幕（长列表请用 row_label，wrap=false 保性能）
+static func label(text: String, size := 32, color := Color.WHITE, wrap := false) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", int(size * font_scale()))

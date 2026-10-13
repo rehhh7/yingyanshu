@@ -352,8 +352,9 @@ func _on_overlay_back() -> void:
 	switch_tab(current_tab)
 
 # ---------------- 全局触控滑动（手指拖动 = 滚轮，松手带惯性缓停） ----------------
-var _touch := {"active": false, "moved": false, "sx": 0.0, "sy": 0.0}
-const TOUCH_DEADZONE := 28.0   # 触摸死区：位移超阈值才算滚动（GitHub issue #16318 社区标准解法），否则留给按钮当点按
+var _touch := {"active": false, "moved": false, "sx": 0.0, "sy": 0.0, "cancel": false, "guard": false}
+const TOUCH_DEADZONE := 28.0   # 滚动死区：位移超阈值才接管滚动（否则页面乱飘）
+const TAP_CANCEL_DIST := 10.0  # 点击取消线：位移超 10px 本次手势判定为滑动，抬起时取消这次点击（用户规则）
 var _touch_sv: ScrollContainer = null   # 按下时缓存目标滚动区，拖动期间不重复全树扫描
 var _fling_sv: ScrollContainer = null
 var _fling_v := 0.0
@@ -364,29 +365,38 @@ func _input(event: InputEvent) -> void:
 		if event.pressed:
 			_touch.active = true
 			_touch.moved = false
+			_touch.cancel = false
 			UI.touch_scrolled = false   # 新一次触摸开始，重置滑动标志（背板等抬起时判定用）
 			_touch.sx = event.position.x
 			_touch.sy = event.position.y
 			_fling_v = 0.0
 			_fling_sv = null
 			_samples = [[Time.get_ticks_msec(), event.position.y]]
-			# 手指落在可滚动的文本框上时不接管：让文本框自己内部滚动（导入框看长文不再整页乱跑）
-			_touch_sv = null if _textedit_at(event.position) else _scroll_at(event.position)
+			# 手指落在文本框/滑块/输入行上时不接管也不取消：它们的拖动是合法操作（划选文字、拖滑块）
+			_touch.guard = _textedit_at(event.position) or _slider_or_lineedit_at(event.position)
+			_touch_sv = null if _touch.guard else _scroll_at(event.position)
 		else:
-			# 发生过滚动就吞掉抬起事件，避免误触发按钮；并启动惯性
-			if _touch.moved:
+			# 吞掉抬起的两种情形：① 发生过滚动（并启动惯性）② 10px 规则判定为滑动
+			# ——按钮收不到这次抬起，点击取消；滑动永远是第一层，主动点击才算点击
+			if _touch.moved or _touch.cancel:
 				get_viewport().set_input_as_handled()
-				_start_fling()
+				if _touch.moved:
+					_start_fling()
 			_touch.active = false
 			_touch_sv = null
 	elif event is InputEventScreenDrag and _touch.active:
+		# 用户规则：touchstart 坐标位移超 10px = 滑动，取消这次点击（文本框/滑块上的合法拖动除外）
+		if not _touch.cancel and not _touch.guard \
+				and Vector2(_touch.sx, _touch.sy).distance_to(event.position) > TAP_CANCEL_DIST:
+			_touch.cancel = true
+			UI.touch_scrolled = true
 		var sv := _touch_sv
 		if sv == null or not is_instance_valid(sv):
-			return   # 起点在文本框/空白：不接管，文本框自己滚
+			return   # 起点在文本框/滑块/空白：不接管滚动，但上面的 10px 判定已生效
 		if not _touch.moved and Vector2(_touch.sx, _touch.sy).distance_to(event.position) < TOUCH_DEADZONE:
-			return   # 死区内不滚动也不吞事件：轻微抖动不会被当成滑动，按钮照常可用
+			return   # 死区内不滚动：轻微抖动页面不飘
 		_touch.moved = true
-		UI.touch_scrolled = true   # 滑动为第一层：本次手势内所有「按下即触发」的交互全部压下
+		UI.touch_scrolled = true
 		sv.scroll_vertical -= int(event.relative.y)
 		_fling_sv = sv
 		_samples.append([Time.get_ticks_msec(), event.position.y])
@@ -429,6 +439,21 @@ func _scroll_at(pos: Vector2) -> ScrollContainer:
 ## 手指位置是否有「内容比框长、可以滚」的文本框
 func _textedit_at(pos: Vector2) -> bool:
 	return _find_textedit(self, pos) != null
+
+## 滑块/输入行命中：它们的拖动是合法操作（拖字号滑块、划选文字），不适用 10px 取消规则
+func _slider_or_lineedit_at(pos: Vector2) -> bool:
+	return _find_slider_or_lineedit(self, pos) != null
+
+func _find_slider_or_lineedit(n: Node, pos: Vector2) -> Control:
+	if n is CanvasItem and not n.is_visible_in_tree():
+		return null
+	if (n is Slider or n is LineEdit) and (n as Control).get_global_rect().has_point(pos):
+		return n
+	for c in n.get_children():
+		var r := _find_slider_or_lineedit(c, pos)
+		if r != null:
+			return r
+	return null
 
 func _find_textedit(n: Node, pos: Vector2) -> TextEdit:
 	if n is CanvasItem and not n.is_visible_in_tree():

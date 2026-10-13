@@ -82,7 +82,7 @@ func _ready() -> void:
 	sv.add_child(slider)
 	var preview := UI.button("预览按钮 %d%%" % int(slider.value * 100), p.accent, Color.WHITE, 30)
 	sv.add_child(preview)
-	sv.add_child(UI.label("拖动滑块实时预览，松手后生效到整个应用", 24, p.sub))
+	sv.add_child(UI.label("拖动滑块实时预览，松手后生效到整个应用", 24, p.sub, true))
 	slider.value_changed.connect(func(v: float):
 		var sc := snappedf(v, 0.05)
 		preview.text = "预览按钮 %d%%" % int(sc * 100)
@@ -255,7 +255,7 @@ func _ready() -> void:
 	var model_card := _input_row("模型", String(DB.settings.get("api_model", "deepseek-v4-flash")), false,
 		func(t: String): DB.settings["api_model"] = t.strip_edges())
 	# 常用 API 端口预设：点按直接填入输入框并保存（不刷新页面，不会跳到别的界面）
-	ai_box.add_child(UI.label("常用接口（点按自动填入，Key 需自行填写）：", 24, p.sub))
+	ai_box.add_child(UI.label("常用接口（点按自动填入，Key 需自行填写）：", 24, p.sub, true))
 	var pre_flow := HFlowContainer.new()
 	pre_flow.add_theme_constant_override("h_separation", 10)
 	pre_flow.add_theme_constant_override("v_separation", 10)

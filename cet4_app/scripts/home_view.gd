@@ -217,13 +217,24 @@ func _show_empty_library() -> void:
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vb.add_child(t)
 	vb.add_child(UI.label("去「设置 → 数据管理」导入你的单词表：\n· 粘贴文本或选择文件（txt / md / docx）\n· 两台手机互传（局域网 / 蓝牙）\n导入的词条会自动分组、查重，逐条确认后入库。", 26, p.sub, true))
+	# 空库也要有手动添加入口：v0.9.25 空词库成默认后，早退导致「＋ 添加」按钮
+	# （在词表头里）根本不创建，空库用户没有任何手动加词的路（用户反馈「被删了」）
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 14)
 	var go := UI.button("📥 去导入", p.accent, Color.WHITE, 30)
 	go.custom_minimum_size = Vector2(0, 84)
+	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	go.pressed.connect(func():
 		var m := _main()
 		if m != null and m.has_method("switch_tab"):
 			m.switch_tab(4))
-	vb.add_child(go)
+	btn_row.add_child(go)
+	var add0 := UI.button("＋ 手动添加", p.panel2, p.text, 30)
+	add0.custom_minimum_size = Vector2(0, 84)
+	add0.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	add0.pressed.connect(func(): _edit_dialog(wl_kind, {}))
+	btn_row.add_child(add0)
+	vb.add_child(btn_row)
 	list_box.add_child(card)
 
 # ---------------- 分组长按重命名 ----------------
@@ -316,6 +327,7 @@ func _edit_dialog(k: String, it: Dictionary) -> void:
 		defs = [["w", "单词 *", it.get("w", "")],
 			["p", "音标（如 /tɛst/，可留空）", it.get("p", "")],
 			["m", "释义 *（含词性，如 vt. 放弃）", it.get("m", "")],
+			["ex", "例句（可留空）", it.get("ex", "")],
 			["day", "分组", it.get("day", "自定义")],
 			["syn", "近义词（顿号/逗号分隔）", _join_names(it.get("syn", []))],
 			["sim", "形近词（顿号/逗号分隔）", _join_names(it.get("sim", []))]]
@@ -341,6 +353,7 @@ func _edit_dialog(k: String, it: Dictionary) -> void:
 			if not it.is_empty() and w0.to_lower() != String(it.get("w", "")).to_lower():
 				ops["remove_words"].append(String(it.w))   # 改了拼写 = 删旧加新
 			ops["add_words"].append({"w": w0, "p": fields["p"].text.strip_edges(), "m": m0,
+				"ex": fields["ex"].text.strip_edges(),
 				"day": fields["day"].text.strip_edges() if fields["day"].text.strip_edges() != "" else "自定义",
 				"syn": _parse_names(fields["syn"].text), "sim": _parse_names(fields["sim"].text)})
 		else:

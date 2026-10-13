@@ -112,8 +112,21 @@ static func button(text: String, color: Color, text_color := Color.WHITE, size :
 	var b := Button.new()
 	b.text = text
 	b.clip_text = true   # 大字体/大按钮时文字钳在按钮内，不画出屏幕外
-	b.custom_minimum_size = Vector2(0, 92 * sc * clampf(fs, 0.9, 1.3))
-	b.add_theme_font_size_override("font_size", int(size * sc * fs))
+	# 注意：clip_text=true 后按钮最小宽度不再包含文字宽度，胶囊按钮会塌成空条（文字全被裁掉）。
+	# 所以用全局字体实测文字宽，连左右留白一起写进最小宽度，把「按文字自动撑宽」的行为补回来
+	var fpx := int(size * sc * fs)
+	var min_w := 0.0
+	var fnt: Font = ThemeDB.fallback_font
+	if fnt != null:
+		min_w = fnt.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fpx).x + 64.0 * sc
+	b.custom_minimum_size = Vector2(min_w, 92 * sc * clampf(fs, 0.9, 1.3))
+	if min_w > 0.0:
+		# 大量调用方随后整体重写 custom_minimum_size = Vector2(0, H) 只为调高度，
+		# 会把文字宽度冲掉（AI 页快捷指令胶囊文字全消失就是这么来的）——进树时再兜底一次
+		b.ready.connect(func():
+			if is_instance_valid(b) and b.custom_minimum_size.x < min_w:
+				b.custom_minimum_size.x = min_w)
+	b.add_theme_font_size_override("font_size", fpx)
 	b.add_theme_color_override("font_color", text_color)
 	b.add_theme_stylebox_override("normal", style_box(color, 14))
 	b.add_theme_stylebox_override("hover", style_box(color.lightened(0.08), 14))

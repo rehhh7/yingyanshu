@@ -222,6 +222,8 @@ func _refresh() -> void:
 		if String(it.get("p", "")) != "":
 			back_box.add_child(_clabel(String(it.p), 30, p.sub))
 		back_box.add_child(_clabel(String(it.get("m", "")), 38, p.accent, true))
+		if String(it.get("ex", "")) != "":
+			back_box.add_child(_clabel("📝 " + String(it.ex), 28, p.sub, true))
 		for syn in it.get("syn", []):
 			back_box.add_child(_clabel("近义 " + String(syn.get("w", "")), 30, p.text))
 			back_box.add_child(_clabel(String(syn.get("n", "")), 26, p.sub, true))

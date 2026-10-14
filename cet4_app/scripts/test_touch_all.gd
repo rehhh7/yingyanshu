@@ -2,7 +2,7 @@ extends SceneTree
 ## 全量触控遍历 v4：InputEventScreenTouch 模拟真实手指（经全局死区/惯性逻辑），
 ## 5 个 Tab + 学习/听写覆盖层的每个可见按钮逐一点击，弹窗自动收捡；
 ## 另测两件回归：① 按钮上起手的滑动不得触发点击（issue #16318 死区）② 滑动确实滚得动。
-const OUT := "C:/Users/s/Desktop/英语/_shots/touch_all/"
+const OUT := "user://_shots/touch_all/"   # 产物目录（符号路径，不写本机绝对路径）
 
 var main
 var DB
@@ -188,7 +188,8 @@ func walk_view(tag: String) -> void:
 				return
 
 func run() -> void:
-	DirAccess.make_dir_recursive_absolute(OUT)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
+	print("截图输出目录：" + ProjectSettings.globalize_path(OUT))
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	await frames(3)

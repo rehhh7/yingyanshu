@@ -6,7 +6,7 @@
 Godot 4.7.1 开发的安卓背单词应用：本地 Markdown 词库 + DeepSeek AI 助手（聊天整理/拍照识图）+ 离线真人发音 + 两台手机互传（局域网/蓝牙），目标用户是学生。
 
 - 包名：`com.kimi.cet4words`
-- 当前版本：**v0.9.28（versionCode 41）**。版本规则：用户没宣布「正式版」前一律 0.9.x 顺延，1.0 留给用户亲口确认
+- 当前版本：**v0.9.29（versionCode 42）**。版本规则：用户没宣布「正式版」前一律 0.9.x 顺延，1.0 留给用户亲口确认
 - 平台：**仅 arm64-v8a**（v0.9.26 起去掉 armv7）· **minSdk 24（安卓 7.0，引擎硬底线）** · targetSdk 35 · OpenGL ES 3.0（gl_compatibility）
 - 词库策略：v0.9.25 起**不内置任何词条**，出厂空库 + 主页导入指引，全由用户导入（粘贴/文件/拍照识图/互传）
 
@@ -46,24 +46,25 @@ trivial /ˈtrɪviəl/ adj. 琐碎的 | 近: insignificant(辨析); ... | 似: tr
 
 ⚠️ 音素拼接引擎（`phonemes/` + test_phoneme.gd）**已被用户否决并移除**——「现场合成机器人味太重」。`_tools/` 里的 gen_phoneme_* 脚本只是历史遗留，不要再接回来，除非用户改主意。
 
-## 构建与测试（本机绝对路径，Windows）
+## 构建与测试（Windows；路径一律用占位符，本机自行替换——勿把本机绝对路径写进文档）
 
 ```bash
-GODOT="C:/Users/s/Downloads/Godot_v4.7.1-stable_win64.exe"
-export JAVA_HOME="C:\Users\s\Desktop\英语\_tools\jdk-17"
-export ANDROID_HOME="C:\Users\s\Desktop\英语\_tools\android-sdk"
-cd "C:/Users/s/Desktop/英语/cet4_app"
+# 占位符：<GODOT>=本机 Godot 4.7.1 编辑器 exe 路径；<REPO>=本仓库克隆目录（_tools/ 在仓库内，jdk-17 与 android-sdk 已自带）
+GODOT="<GODOT>"                          # 例：C:/Tools/Godot_v4.7.1-stable_win64.exe
+export JAVA_HOME="<REPO>/_tools/jdk-17"
+export ANDROID_HOME="<REPO>/_tools/android-sdk"
+cd "<REPO>/cet4_app"
 
 # 回归测试（无头）
 "$GODOT" --headless --path . -s scripts/test_runner.gd        # 22 项核心（自注入夹具，不依赖内置词）
 "$GODOT" --headless --path . -s scripts/test_import_parse.gd  # 解析器（fails=0 为通过）
 "$GODOT" --headless --path . -s scripts/test_transfer.gd      # 29 项导入/导出/回滚
 "$GODOT" --headless --path . -s scripts/test_lan.gd           # 8 项局域网协议
-# 截图冒烟（竖屏模拟，产物在 ../_shots/）
+# 截图冒烟（竖屏模拟，产物在 user://_shots/，脚本启动时会打印实际目录）
 "$GODOT" --path . --resolution 540x1152 scenes/test_shots.tscn   # 注意：不能加 -s
 
 # 导出（必须用 debug 签名，与已装包证书一致；换签名 = 用户必须卸载丢数据）
-"$GODOT" --headless --path . --export-debug "Android"   # 产物 ../英眼书.apk
+"$GODOT" --headless --path . --export-debug "Android"   # 产物 <REPO>/英眼书.apk
 ```
 
 导出后**必做验签 + 验包**（中文文件名会让 aapt 报 Illegal byte sequence，先复制成英文名）：
@@ -97,8 +98,10 @@ jar cf classes.jar com/yys/kit/*.class        # 替换 plugin_build/aar/classes.
 | 弹窗里滑动带动背景页 | 滚动穿透，弹窗容器要吃掉触摸事件（v0.9.20 修） |
 | 设置页截图/自动化点不到按钮 | 设置页是**分帧构建**的，自动化脚本要轮询等分组头出现再操作 |
 | 导出过滤 | exclude_filter 里排除 test/tool 脚本时**要连 `.gd.uid` 一起排**，否则 uid 残留进包 |
-| 大资产 | 音频一律 OGG（WAV 的 1/10 体积）；大图一律 WebP。APK 每版控制在 100MB 内（当前 36.4MB） |
+| 大资产 | 音频一律 OGG（WAV 的 1/10 体积）；大图一律 WebP。APK 每版控制在 100MB 内（当前 39.9MB） |
 | 热更/导入大乱文档 | 解析器已容忍乱格式；导入后先提示分组单词数再整理，是用户明确要求 |
+
+**发布即挂 Release**：每出一版把 APK 传到 GitHub Release（`gh release create vX.Y.Z 英眼书.apk` 或 Releases 网页上传），用户手机上直接下载；文档与脚本里永不写本机绝对路径（占位符 `<GODOT>`/`<REPO>`），防公开仓库时泄露机器用户名
 
 ## 工具链（_tools/）
 

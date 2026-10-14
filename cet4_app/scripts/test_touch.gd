@@ -1,6 +1,6 @@
 extends SceneTree
 ## 模拟人类触控全界面摸查 v3：push_input 真实点击事件，逐屏截图 + 断言
-const OUT := "C:/Users/s/Desktop/英语/_shots/touch/"
+const OUT := "user://_shots/touch/"   # 产物目录（符号路径，不写本机绝对路径）
 
 var main
 var DB
@@ -63,7 +63,8 @@ func close_dialogs() -> void:
 			d.queue_free()
 
 func run() -> void:
-	DirAccess.make_dir_recursive_absolute(OUT)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
+	print("截图输出目录：" + ProjectSettings.globalize_path(OUT))
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	await process_frame

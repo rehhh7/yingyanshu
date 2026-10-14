@@ -163,29 +163,30 @@ apple /ˈæpl̩/ n. 苹果（新释义）
 
 ## 4. 构建流水线（照抄可复现）
 
-### 4.1 环境（全部本地，不装系统级）
+### 4.1 环境（全部本地，不装系统级；路径用占位符，勿把本机绝对路径写进文档）
 ```
-Godot : C:/Users/s/Downloads/Godot_v4.7.1-stable_win64.exe
-JDK   : C:\Users\s\Desktop\英语\_tools\jdk-17        （JAVA_HOME 指它）
-SDK   : C:\Users\s\Desktop\英语\_tools\android-sdk   （platforms/android-35 + build-tools/35.0.0）
-Gradle: 由 wrapper 解析，distributionUrl=file:///C:/Users/s/gradle-8.11.1-bin.zip
+Godot : <GODOT>                     （本机 Godot 4.7.1-stable win64 编辑器 exe）
+JDK   : <REPO>/_tools/jdk-17        （JAVA_HOME 指它）
+SDK   : <REPO>/_tools/android-sdk   （platforms/android-35 + build-tools/35.0.0）
+Gradle: 由 wrapper 解析，distributionUrl=file:///C:/gradle/gradle-8.11.1-bin.zip
+        （官网 gradle-8.11.1-bin.zip 下载后放 C:/gradle/——中性路径不含用户名；本机 TLS 拦截导致官方源直连失败，勿改回 https）
 ```
 > 本机有 TLS 拦截：`curl` 一律 `--ssl-no-revoke`；仓库已设 `http.sslVerify=false`；
 > Gradle 发行包下载被拦，所以 wrapper 指本地 zip。Maven Central 依赖可正常下载。
 
 ### 4.2 导出 APK（每次发版就这一条命令）
 ```bash
-cd "C:/Users/s/Desktop/英语/cet4_app" && \
-JAVA_HOME="C:\Users\s\Desktop\英语\_tools\jdk-17" \
-ANDROID_HOME="C:\Users\s\Desktop\英语\_tools\android-sdk" \
-"C:/Users/s/Downloads/Godot_v4.7.1-stable_win64.exe" --headless --path . --export-debug "Android"
-# 产物：C:/Users/s/Desktop/英语/英眼书.apk
+cd "<REPO>/cet4_app" && \
+JAVA_HOME="<REPO>/_tools/jdk-17" \
+ANDROID_HOME="<REPO>/_tools/android-sdk" \
+"<GODOT>" --headless --path . --export-debug "Android"
+# 产物：<REPO>/英眼书.apk
 ```
 
 ### 4.3 改 YysKit 插件后的重编译
 ```bash
-cd "C:/Users/s/Desktop/英语/_tools"
-"C:/Users/s/Desktop/英语/_tools/jdk-17/bin/javac" --release 11 \
+cd "<REPO>/_tools"
+"<REPO>/_tools/jdk-17/bin/javac" --release 11 \
   -cp "android-sdk/platforms/android-35/android.jar;plugin_build/godotlib/classes.jar" \
   -d plugin_build/classes plugin_src/YysKit.java plugin_src/YysShareProvider.java
 # 打 classes.jar → 与 plugin_src/AndroidManifest.xml + 空 R.txt 一起 zip 成 YysKit.aar
@@ -272,8 +273,8 @@ unzip "%APPDATA%/Godot/export_templates/4.7.1.stable/android_source.zip" -d cet4
 全部 headless、无需手机、每个一分钟内跑完：
 
 ```bash
-cd "C:/Users/s/Desktop/英语/cet4_app"
-G="C:/Users/s/Downloads/Godot_v4.7.1-stable_win64.exe"
+cd "<REPO>/cet4_app"
+G="<GODOT>"   # 本机 Godot 4.7.1 编辑器 exe 路径
 "$G" --headless --path . -s scripts/test_runner.gd        # 核心：词库/分组/星标/备份/回滚/会话（23 项）
 "$G" --headless --path . -s scripts/test_import_parse.gd  # 导入解析器容错（23 项）
 "$G" --headless --path . -s scripts/test_transfer.gd      # 互传 Markdown 往返/覆盖/删组（17 项）

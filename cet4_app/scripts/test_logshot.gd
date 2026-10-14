@@ -1,11 +1,13 @@
 extends SceneTree
 ## 一次性排查：展开设置页「更新日志」分组并截图
-const OUT := "C:/Users/s/Desktop/英语/_shots/"
+const OUT := "user://_shots/"   # 产物目录（符号路径，不写本机绝对路径）；实际位置见启动时打印
 
 func _initialize() -> void:
 	call_deferred("run")
 
 func run() -> void:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
+	print("截图输出目录：" + ProjectSettings.globalize_path(OUT))
 	var main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	await process_frame

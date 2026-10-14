@@ -20,6 +20,9 @@ func run() -> void:
 		print("card0.min = ", home.wl_flow.get_child(0).custom_minimum_size)
 		print("card0.size = ", home.wl_flow.get_child(0).size)
 	var img := root.get_texture().get_image()
-	img.save_png("C:/Users/s/Desktop/英语/_shots/dbg_table.png")
+	var out := "user://_shots/"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out))
+	img.save_png(out + "dbg_table.png")
+	print("截图输出目录：" + ProjectSettings.globalize_path(out))
 	print("== done ==")
 	quit()

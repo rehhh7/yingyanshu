@@ -10,7 +10,10 @@ func run() -> void:
 		print("FAIL autoload DB 未加载")
 		quit(1)
 		return
-	var f := FileAccess.open("C:/Users/s/Desktop/英语/_tools/word_list.tsv", FileAccess.WRITE)
+	var out := "user://_tools/"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out))
+	print("TSV 输出目录：" + ProjectSettings.globalize_path(out))
+	var f := FileAccess.open(out + "word_list.tsv", FileAccess.WRITE)
 	if f == null:
 		print("FAIL 无法写出 word_list.tsv")
 		quit(1)

@@ -2,7 +2,7 @@ extends Node
 ## 截图验收：依次渲染各页面保存 PNG 到 _shots/
 ## 运行：godot --path . scenes/test_shots.tscn --resolution 540x1152（不能用 -s：全局类编译早于 autoload 注册，DB 标识符解析失败）
 
-const OUT := "C:/Users/s/Desktop/英语/_shots/"
+const OUT := "user://_shots/"   # 产物目录（符号路径，不写本机绝对路径）；实际位置见启动时打印
 
 func _ready() -> void:
 	call_deferred("run")
@@ -24,7 +24,8 @@ func _dismiss_dialogs() -> void:
 	await get_tree().process_frame
 
 func run() -> void:
-	DirAccess.make_dir_recursive_absolute(OUT)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
+	print("截图输出目录：" + ProjectSettings.globalize_path(OUT))
 	# v0.9.25 起内置词库为空：注入演示夹具供学习/听写/搜索页面截图
 	var db0 = get_tree().root.get_node("DB")
 	db0.factory_reset_library()

@@ -20,15 +20,16 @@ def _find_cjk():
     bold = os.environ.get("DAIMON_CJK_FONT_BOLD")
     if reg and bold and os.path.exists(reg) and os.path.exists(bold):
         return reg, bold
+    base = os.path.join(os.environ.get("APPDATA", ""), "kimi-desktop/daimon-share/daimon/runtime")
     pats = [
-        r"C:/Users/s/AppData/Roaming/kimi-desktop/daimon-share/daimon/runtime/**/NotoSansCJKsc-Regular.otf",
-        r"C:/Users/s/AppData/Roaming/kimi-desktop/daimon-share/daimon/runtime/**/NotoSansCJK*Regular*",
-        r"C:/Users/s/AppData/Roaming/kimi-desktop/daimon-share/daimon/runtime/**/*CJK*Regular*",
+        base + "/**/NotoSansCJKsc-Regular.otf",
+        base + "/**/NotoSansCJK*Regular*",
+        base + "/**/*CJK*Regular*",
     ]
     bpat = [
-        r"C:/Users/s/AppData/Roaming/kimi-desktop/daimon-share/daimon/runtime/**/NotoSansCJKsc-Bold.otf",
-        r"C:/Users/s/AppData/Roaming/kimi-desktop/daimon-share/daimon/runtime/**/NotoSansCJK*Bold*",
-        r"C:/Users/s/AppData/Roaming/kimi-desktop/daimon-share/daimon/runtime/**/*CJK*Bold*",
+        base + "/**/NotoSansCJKsc-Bold.otf",
+        base + "/**/NotoSansCJK*Bold*",
+        base + "/**/*CJK*Bold*",
     ]
     reg = bold = None
     for p in pats:

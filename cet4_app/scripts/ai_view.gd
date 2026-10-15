@@ -44,7 +44,7 @@ add 是新增，edit 是修改已存在词条（只写要改的字段即可：m/
    - 拼写检查：逐个检查原文拼写，疑似拼写错误或不存在的词不要写入 JSON，在正文里逐条提示用户核对
    - 读音标注 p 字段按语言处理：英语填国际音标（如 /tɛst/），日语填假名读音，其他语言填常用读音标注；拿不准就留空
    - 例句 ex 字段：新增单词时尽量配一句简单地道的例句（不超过 15 个词），可附中文翻译；用户提供的词库上下文里标注（无例句）的词，用户要求时用 edit_words 只补 ex 字段
-   - 修改已存在词条：用户要求改释义、补例句、换分组、改读音标注时，一律用 edit_words/edit_phrases，只写要改的字段，不要把整个词条重新 add（词库里已存在的词条严禁进 add_words）
+   - 修改已存在词条：用户要求改释义、补例句、换分组、改读音标注时，一律用 edit_words/edit_phrases，只写要改的字段，不要把整个词条重新 add（词库里已存在的词条严禁进 add_words）。上下文里每个词条后〔〕内是它的当前分组，换分组就把 day/sec 字段填成目标分组名
    - 分组：新单词的 day 字段统一填用户指定的新分组（如 Day 22）；新词组的 sec 字段同理；用户没指定时用上下文里给出的新分组名
 6. 长期记忆：当你了解到值得长期记住的用户信息（学习目标、偏好、薄弱点、正在进行的学习计划等），在回复末尾附加一个 ```json 代码块：{"memory_add":["记忆内容，每条一句话"]}；用户要求忘掉某事时输出 {"memory_remove":["要删除的记忆原文"]}。记忆会永久保存，之后每次对话都会自动携带，只记真正有用的，不要记闲聊和临时内容。
 7. 除修改词库和记忆操作外，其他回答不要用 JSON 格式。""".replace("{LANG}", lang)
@@ -506,6 +506,36 @@ func _is_organize_intent(text: String) -> bool:
 			return true
 	return false
 
+## 词条上下文行（三处共用：生词组/携带胶囊/修改意图自动携带）：带分组归属与例句状态
+static func _word_ctx_line(w: Dictionary) -> String:
+	return "%s〔%s〕%s%s" % [w.w, w.get("day", ""), w.get("m", ""),
+		("（例：" + String(w.ex).left(60) + "）") if String(w.get("ex", "")) != "" else "（无例句）"]
+
+static func _phrase_ctx_line(ph: Dictionary) -> String:
+	return "%s〔%s〕= %s" % [ph.en, ph.get("sec", ""), ph.get("cn", "")]
+
+## 修改词条意图：用户要改/移/删已入库的词条（此时必须给 AI 全量词库带分组，否则它看不见要改什么）
+func _is_modify_intent(text: String) -> bool:
+	for kw in ["修改", "移到", "移动到", "改释义", "改音标", "补例句", "配例句", "换分组", "改分组",
+			"删掉", "删除", "去掉", "改成", "改一下", "改下"]:
+		if kw in text:
+			return true
+	return false
+
+## 修改意图时自动携带的全量词库（带分组归属，等价于手动勾选 单词库+词组库 胶囊）
+func _full_library_context() -> String:
+	var wl := []
+	for w in DB.words:
+		wl.append(_word_ctx_line(w))
+	var pl := []
+	for ph in DB.phrases:
+		pl.append(_phrase_ctx_line(ph))
+	var out := "【单词库（全量，〔〕内为当前分组）】\n" + "\n".join(wl) \
+		+ "\n【词组库】\n" + "\n".join(pl)
+	if out.length() > 20000:
+		out = out.left(20000) + "\n……（词库过大已截断，可让用户勾选「单词库」胶囊分批查看）"
+	return out
+
 ## 按行切成约 size 字的块，不截断行
 static func _split_chunks(text: String, size: int) -> Array:
 	var chunks := []
@@ -583,10 +613,10 @@ func _context_text() -> String:
 	if ctx_checks["starred"].button_pressed:
 		var sw := []
 		for w in DB.starred_items("words"):
-			sw.append("%s %s" % [w.w, w.get("m", "")])
+			sw.append(_word_ctx_line(w))
 		var sp := []
 		for ph in DB.starred_items("phrases"):
-			sp.append("%s = %s" % [ph.en, ph.get("cn", "")])
+			sp.append(_phrase_ctx_line(ph))
 		parts.append("【我的生词组】单词：%s；词组：%s" % ["、".join(sw), "、".join(sp)])
 	if ctx_checks["stats"].button_pressed:
 		var s := DB.stats_summary()
@@ -596,9 +626,7 @@ func _context_text() -> String:
 	if ctx_checks["words"].button_pressed:
 		var lines := []
 		for w in DB.words:
-			# 带例句状态：AI 才能找到哪些词缺例句（配例句接口的输入依据）
-			lines.append("%s %s%s" % [w.w, w.get("m", ""),
-				("（例：" + String(w.ex).left(60) + "）") if String(w.get("ex", "")) != "" else "（无例句）"])
+			lines.append(_word_ctx_line(w))
 		var joined_w := "\n".join(lines)
 		if joined_w.length() > 15000:
 			joined_w = joined_w.left(15000) + "\n……（单词库过长已截断）"
@@ -606,7 +634,7 @@ func _context_text() -> String:
 	if ctx_checks["phrases"].button_pressed:
 		var lines := []
 		for ph in DB.phrases:
-			lines.append("%s = %s" % [ph.en, ph.get("cn", "")])
+			lines.append(_phrase_ctx_line(ph))
 		var joined_p := "\n".join(lines)
 		if joined_p.length() > 15000:
 			joined_p = joined_p.left(15000) + "\n……（词组库过长已截断）"
@@ -660,9 +688,12 @@ func _send() -> void:
 	if bool(session.get("whale", false)):
 		sys = _WHALE_PROMPT + "\n\n" + sys   # 鲸鱼娘人格叠在学习规则之前，仅本会话生效
 	var ctx := _context_text()
-	# 涉及整理/导入时自动附词库摘要（查重 + 新 Day 分组），未勾选单词库时才补
-	if _needs_library_context(text) and not ctx_checks["words"].button_pressed:
-		ctx += ("\n\n" if ctx != "" else "") + _library_digest()
+	# 整理/导入意图附查重摘要；修改意图附全量词库（带分组归属）——AI 看不见词库就没法改
+	if not ctx_checks["words"].button_pressed:
+		if _is_modify_intent(text):
+			ctx += ("\n\n" if ctx != "" else "") + _full_library_context()
+		elif _needs_library_context(text):
+			ctx += ("\n\n" if ctx != "" else "") + _library_digest()
 	if ctx != "":
 		sys += "\n\n以下是用户本次携带的数据：\n" + ctx
 	var messages := []

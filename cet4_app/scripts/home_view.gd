@@ -541,4 +541,49 @@ func _result_row(title: String, phonetic: String, meaning: String,
 		var edit := UI.icon_btn("✎", p.sub, 34)
 		edit.pressed.connect(func(): _edit_dialog(kind, src))
 		btn_col.add_child(edit)
+		# 长按词条卡片（避开右侧按钮列）→ 修改 / 删除菜单，与分组长按同一手势
+		var lp_msec := 0
+		var lp_pos := Vector2.ZERO
+		card.gui_input.connect(func(ev: InputEvent):
+			if ev is InputEventScreenTouch or ev is InputEventMouseButton:
+				if ev.pressed:
+					lp_msec = Time.get_ticks_msec()
+					lp_pos = ev.position
+				else:
+					if lp_msec > 0 and Time.get_ticks_msec() - lp_msec >= 550:
+						_entry_menu(kind, src)
+					lp_msec = 0
+			elif ev is InputEventScreenDrag or ev is InputEventMouseMotion:
+				if lp_msec > 0 and ev.position.distance_to(lp_pos) > 30.0:
+					lp_msec = 0)   # 拖动滚动不算长按
 	return card
+
+## 词条长按菜单：修改 / 删除（删除走和 AI 编辑相同的备份+合并通道，可在回滚里还原）
+func _entry_menu(kind: String, src: Dictionary) -> void:
+	UI.vibrate(40)
+	var p := UI.palette()
+	var title := String(src.get("w", "")) if kind == "words" else String(src.get("en", ""))
+	var sh: Dictionary = UI.sheet(self, "词条「%s」" % title, "", "关闭")
+	var body: VBoxContainer = sh["body"]
+	var ed := UI.button("✏️ 修改词条", p.panel2, p.text, 29)
+	ed.custom_minimum_size = Vector2(0, 80)
+	ed.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		_edit_dialog(kind, src))
+	body.add_child(ed)
+	var del := UI.button("🗑 删除词条", p.panel2, p.danger, 29)
+	del.custom_minimum_size = Vector2(0, 80)
+	del.pressed.connect(func():
+		UI.dismiss_dialog(sh["overlay"])
+		UI.confirm_dialog(self, "删除词条",
+			"确定删除「%s」吗？（删除前自动备份，可在 设置 → 词库回滚 还原）" % title,
+			func():
+				var ops := {"add_words": [], "add_phrases": [], "remove_words": [], "remove_phrases": []}
+				if kind == "words":
+					ops["remove_words"].append(String(src.get("w", "")))
+				else:
+					ops["remove_phrases"].append(String(src.get("en", "")))
+				UI.toast(self, DB.apply_ai_library_edit(ops))
+				_rebuild(),
+			"删除", "取消", true))
+	body.add_child(del)

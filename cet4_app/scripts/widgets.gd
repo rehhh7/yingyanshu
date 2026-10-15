@@ -248,6 +248,21 @@ static func style_slider(s: HSlider) -> void:
 	s.add_theme_icon_override("grabber", gt)
 	s.add_theme_icon_override("grabber_highlight", gt)
 	s.add_theme_icon_override("grabber_disabled", gt)
+	# 触控原生适配：HSlider 只认鼠标事件，部分触控链路（含无鼠标模拟的环境）拖不动；
+	# 这里把屏幕触控直接翻译成取值——按下跳到触点、拖动跟手，松手发 drag_ended
+	s.gui_input.connect(func(ev: InputEvent):
+		if ev is InputEventScreenTouch:
+			if ev.pressed:
+				s.value = s.min_value + (s.max_value - s.min_value) * clampf(ev.position.x / maxf(s.size.x, 1.0), 0.0, 1.0)
+				s.set_meta("touch_grab", true)
+			else:
+				if s.has_meta("touch_grab"):
+					s.remove_meta("touch_grab")
+					s.drag_ended.emit(true)
+			s.accept_event()
+		elif ev is InputEventScreenDrag and s.has_meta("touch_grab"):
+			s.value = s.min_value + (s.max_value - s.min_value) * clampf(ev.position.x / maxf(s.size.x, 1.0), 0.0, 1.0)
+			s.accept_event())
 
 static func spacer(h := 16) -> Control:
 	var c := Control.new()

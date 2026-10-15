@@ -372,21 +372,22 @@ func _input(event: InputEvent) -> void:
 			_fling_v = 0.0
 			_fling_sv = null
 			_samples = [[Time.get_ticks_msec(), event.position.y]]
-			# 手指落在文本框/滑块/输入行上时不接管也不取消：它们的拖动是合法操作（划选文字、拖滑块）
+			# 手指落在文本框/滑块/输入行上时不接管滚动（划选文字、拖滑块由它们自己处理）；
+			# 但 10px 取消规则对它们同样生效——屏幕上位移超 10px 的滑动手势，松手落在按钮上一律不触发
 			_touch.guard = _textedit_at(event.position) or _slider_or_lineedit_at(event.position)
 			_touch_sv = null if _touch.guard else _scroll_at(event.position)
 		else:
-			# 吞掉抬起的两种情形：① 发生过滚动（并启动惯性）② 10px 规则判定为滑动
+			# 吞掉抬起的两种情形：① 发生过滚动（并启动惯性）② 10px 规则判定为滑动且松手落在按钮上
 			# ——按钮收不到这次抬起，点击取消；滑动永远是第一层，主动点击才算点击
-			if _touch.moved or _touch.cancel:
+			if _touch.moved or (_touch.cancel and _buttonish_at(event.position)):
 				get_viewport().set_input_as_handled()
 				if _touch.moved:
 					_start_fling()
 			_touch.active = false
 			_touch_sv = null
 	elif event is InputEventScreenDrag and _touch.active:
-		# 用户规则：touchstart 坐标位移超 10px = 滑动，取消这次点击（文本框/滑块上的合法拖动除外）
-		if not _touch.cancel and not _touch.guard \
+		# 用户规则：以 touchstart 为基准，屏幕上位移超 10px = 滑动，取消本次点击（无豁免区）
+		if not _touch.cancel \
 				and Vector2(_touch.sx, _touch.sy).distance_to(event.position) > TAP_CANCEL_DIST:
 			_touch.cancel = true
 			UI.touch_scrolled = true
@@ -440,9 +441,25 @@ func _scroll_at(pos: Vector2) -> ScrollContainer:
 func _textedit_at(pos: Vector2) -> bool:
 	return _find_textedit(self, pos) != null
 
-## 滑块/输入行命中：它们的拖动是合法操作（拖字号滑块、划选文字），不适用 10px 取消规则
+## 滑块/输入行命中：不接管它们的滚动（拖字号滑块、划选文字是它们自己的事）
 func _slider_or_lineedit_at(pos: Vector2) -> bool:
 	return _find_slider_or_lineedit(self, pos) != null
+
+## 抬起位置是否落在按钮类控件上（Button/胶囊勾选行都是 BaseButton）：
+## 10px 取消规则只拦截「按钮的点击」，滑块和文本框自己的抬起照常放行
+func _buttonish_at(pos: Vector2) -> bool:
+	return _find_buttonish(self, pos) != null
+
+func _find_buttonish(n: Node, pos: Vector2) -> Control:
+	if n is CanvasItem and not n.is_visible_in_tree():
+		return null
+	if n is BaseButton and (n as Control).get_global_rect().has_point(pos):
+		return n
+	for c in n.get_children():
+		var r := _find_buttonish(c, pos)
+		if r != null:
+			return r
+	return null
 
 func _find_slider_or_lineedit(n: Node, pos: Vector2) -> Control:
 	if n is CanvasItem and not n.is_visible_in_tree():

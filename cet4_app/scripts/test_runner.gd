@@ -58,14 +58,29 @@ func run() -> void:
 	var log = DB.apply_ai_library_edit(ops)
 	check("AI新增写入", log.find("testword_zz") >= 0)
 	check("词库+2", DB.words.size() == 13 and DB.phrases.size() == 4)
-	var backups = DB.list_backups()
-	check("自动备份生成", backups.size() >= 1)
+	check("自动备份生成", DB.list_backups().size() >= 1)
 	var rm = DB.apply_ai_library_edit({"remove_words": ["testword_zz"], "remove_phrases": ["test phrase zz"]})
 	check("AI删除", DB.words.size() == 12 and DB.phrases.size() == 3)
-	check("回滚", DB.rollback_backup(backups[0]).begins_with("已回滚"))
-	check("回滚后词数13", DB.words.size() == 13)
+	# 回滚到最新备份（= 删除操作前的快照），撤销删除恢复 13 词；
+	# 注意备份只保留最近 5 份，捕获后不能再有其他写操作，否则目标会被挤掉
+	var backups2 = DB.list_backups()
+	check("回滚", DB.rollback_backup(backups2[0]).begins_with("已回滚"))
+	check("回滚撤销删除", DB.words.size() == 13)
+	# edit 接口：只合并给定字段，其余原样保留（v0.9.30 AI 修改词条/配例句）
+	DB.apply_ai_library_edit({"add_words": [{"w": "editword_zz", "m": "n. 旧释义", "p": "/old/", "day": "测试组A"}],
+		"add_phrases": [{"sec": "测试P组", "en": "edit phrase zz", "cn": "旧释义"}]})
+	DB.apply_ai_library_edit({"edit_words": [{"w": "editword_zz", "ex": "This is editword_zz."}],
+		"edit_phrases": [{"en": "edit phrase zz", "cn": "新释义"}]})
+	var ew = DB.words.filter(func(w): return w.w == "editword_zz")[0]
+	check("edit合并ex", String(ew.get("ex", "")) == "This is editword_zz.")
+	check("edit保留旧字段", String(ew.get("m", "")) == "n. 旧释义" and String(ew.get("p", "")) == "/old/")
+	var ep = DB.phrases.filter(func(p): return p.en == "edit phrase zz")[0]
+	check("edit词组改释义", String(ep.get("cn", "")) == "新释义")
+	var n0 = DB.words.size()
+	DB.apply_ai_library_edit({"edit_words": [{"w": "ghostword_zz", "m": "n. 改转增", "ex": "Ghost."}]})
+	check("edit未命中转新增", DB.words.size() == n0 + 1)
 	# 清理测试数据
-	DB.apply_ai_library_edit({"remove_words": ["testword_zz"], "remove_phrases": ["test phrase zz"]})
+	DB.apply_ai_library_edit({"remove_words": ["testword_zz", "editword_zz", "ghostword_zz"], "remove_phrases": ["test phrase zz", "edit phrase zz"]})
 	DB.factory_reset_library()
 	check("出厂还原为空", DB.words.size() == 0 and DB.phrases.size() == 0)
 

@@ -35,12 +35,16 @@ static func _sys_prompt() -> String:
 4. 如果用户要求修改词库（添加/删除单词或词组），必须只输出如下 JSON（放在 ```json 代码块中），不要输出其他内容：
 {"add_words":[{"w":"单词","p":"读音标注","m":"词性+中文释义","ex":"例句（可留空）","day":"自定义","syn":[],"sim":[]}],
  "add_phrases":[{"sec":"自定义","en":"词组原文","cn":"中文释义"}],
+ "edit_words":[{"w":"已存在的单词","m":"新释义","ex":"新例句"}],
+ "edit_phrases":[{"en":"已存在的词组","cn":"新释义"}],
  "remove_words":["要删的单词"],"remove_phrases":["要删的词组原文"]}
-不需要的字段可以省略。App 会解析这个 JSON 并让用户逐条确认后才写入。
+add 是新增，edit 是修改已存在词条（只写要改的字段即可：m/p/ex/day/syn/sim，词组改 cn/sec），remove 是删除；不需要的字段可以省略。App 会解析这个 JSON 并让用户逐条确认后才写入。
 5. 整理新单词/词组入库时的硬性规则：
    - 查重：先对照用户现有词库，已经存在的单词/词组不要写入 JSON，在正文里列出"以下已存在，已跳过：……"
    - 拼写检查：逐个检查原文拼写，疑似拼写错误或不存在的词不要写入 JSON，在正文里逐条提示用户核对
    - 读音标注 p 字段按语言处理：英语填国际音标（如 /tɛst/），日语填假名读音，其他语言填常用读音标注；拿不准就留空
+   - 例句 ex 字段：新增单词时尽量配一句简单地道的例句（不超过 15 个词），可附中文翻译；用户提供的词库上下文里标注（无例句）的词，用户要求时用 edit_words 只补 ex 字段
+   - 修改已存在词条：用户要求改释义、补例句、换分组、改读音标注时，一律用 edit_words/edit_phrases，只写要改的字段，不要把整个词条重新 add（词库里已存在的词条严禁进 add_words）
    - 分组：新单词的 day 字段统一填用户指定的新分组（如 Day 22）；新词组的 sec 字段同理；用户没指定时用上下文里给出的新分组名
 6. 长期记忆：当你了解到值得长期记住的用户信息（学习目标、偏好、薄弱点、正在进行的学习计划等），在回复末尾附加一个 ```json 代码块：{"memory_add":["记忆内容，每条一句话"]}；用户要求忘掉某事时输出 {"memory_remove":["要删除的记忆原文"]}。记忆会永久保存，之后每次对话都会自动携带，只记真正有用的，不要记闲聊和临时内容。
 7. 除修改词库和记忆操作外，其他回答不要用 JSON 格式。""".replace("{LANG}", lang)
@@ -592,7 +596,9 @@ func _context_text() -> String:
 	if ctx_checks["words"].button_pressed:
 		var lines := []
 		for w in DB.words:
-			lines.append("%s %s" % [w.w, w.get("m", "")])
+			# 带例句状态：AI 才能找到哪些词缺例句（配例句接口的输入依据）
+			lines.append("%s %s%s" % [w.w, w.get("m", ""),
+				("（例：" + String(w.ex).left(60) + "）") if String(w.get("ex", "")) != "" else "（无例句）"])
 		var joined_w := "\n".join(lines)
 		if joined_w.length() > 15000:
 			joined_w = joined_w.left(15000) + "\n……（单词库过长已截断）"
@@ -722,11 +728,12 @@ func _show_preview(ops: Dictionary, msg = null, ops_btn: Button = null) -> void:
 	var p := UI.palette()
 	var checks: Array = []   # [勾选胶囊行, kind, payload]
 	var sh := UI.sheet(self, "词库修改预览（勾选后确认写入，写入前自动备份）", "写入选中项", "取消", func():
-		var filtered := {"add_words": [], "add_phrases": [], "remove_words": [], "remove_phrases": []}
+		var filtered := {"add_words": [], "add_phrases": [], "edit_words": [], "edit_phrases": [], "remove_words": [], "remove_phrases": []}
 		for item in checks:
 			if item[0].button_pressed:
 				filtered[item[1]].append(item[2])
 		var total: int = filtered["add_words"].size() + filtered["add_phrases"].size() \
+			+ filtered["edit_words"].size() + filtered["edit_phrases"].size() \
 			+ filtered["remove_words"].size() + filtered["remove_phrases"].size()
 		if total == 0:
 			UI.toast(self, "未选择任何修改")
@@ -749,6 +756,23 @@ func _show_preview(ops: Dictionary, msg = null, ops_btn: Button = null) -> void:
 		var cb := UI.check_row("＋词组  %s = %s（%s）" % [ph.get("en", "?"), ph.get("cn", ""), ph.get("sec", "自定义")], true, p.text)
 		list.add_child(cb)
 		checks.append([cb, "add_phrases", ph])
+	for ew in ops.get("edit_words", []):
+		var changed := []
+		for k in ew:
+			if k != "w":
+				changed.append(k)
+		var cb := UI.check_row("✎修改单词  %s（改：%s）%s" % [ew.get("w", "?"), "、".join(changed),
+			("  例：" + String(ew.ex).left(40)) if String(ew.get("ex", "")) != "" else ""], true, p.accent)
+		list.add_child(cb)
+		checks.append([cb, "edit_words", ew])
+	for ep in ops.get("edit_phrases", []):
+		var changed2 := []
+		for k in ep:
+			if k != "en":
+				changed2.append(k)
+		var cb := UI.check_row("✎修改词组  %s（改：%s）" % [ep.get("en", "?"), "、".join(changed2)], true, p.accent)
+		list.add_child(cb)
+		checks.append([cb, "edit_phrases", ep])
 	for rw in ops.get("remove_words", []):
 		var cb := UI.check_row("－删除单词  %s" % rw, true, p.danger)
 		list.add_child(cb)

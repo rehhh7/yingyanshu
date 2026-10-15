@@ -182,6 +182,7 @@ static func extract_ops(content: String) -> Dictionary:
 	for c in candidates:
 		var d = JSON.parse_string(c)
 		if d is Dictionary and (d.has("add_words") or d.has("add_phrases")
+				or d.has("edit_words") or d.has("edit_phrases")
 				or d.has("remove_words") or d.has("remove_phrases")):
 			return d
 	return {}

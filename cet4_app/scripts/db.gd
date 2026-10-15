@@ -53,6 +53,7 @@ const DEFAULT_SETTINGS := {
 	"quick_prompts": [
 		{"name": "配近义词/形近词", "prompt": "请为我的生词组里的每个单词配上 1~2 个近义词和 1 个形近词，并各给一句中文辨析。用中文回答。"},
 		{"name": "整理文本成词库", "prompt": "请把下面这段文本整理成词库 JSON。格式为 {\"add_words\":[{\"w\":\"单词\",\"p\":\"音标\",\"m\":\"词性+中文释义\",\"ex\":\"例句（可留空）\",\"day\":\"自定义\",\"syn\":[],\"sim\":[]}],\"add_phrases\":[{\"sec\":\"自定义\",\"en\":\"英文词组\",\"cn\":\"中文释义\"}]}。只输出 JSON，不要输出其他内容。文本如下：\n"},
+		{"name": "给新词配例句", "prompt": "请检查我词库里标注了（无例句）的单词，用 edit_words 给每个词补上 ex 字段：一句简单地道的例句（不超过 15 个词），并附中文翻译。只输出 JSON，不要输出其他内容。"},
 		{"name": "出10道听写题", "prompt": "请从我的生词组里挑 10 个词出听写题：给出中文释义让我默写英文。按 1. 中文释义 的格式列出题目，先不要给答案，等我回答后再批改。"},
 		{"name": "分析学习数据", "prompt": "请分析我的学习统计数据，指出我的薄弱点并给出接下来一周的学习建议。用中文回答。"}
 	]
@@ -81,6 +82,17 @@ func load_settings() -> void:
 	if String(settings.get("api_base", "")).contains("deepseek.com") \
 			and ["deepseek-chat", "deepseek-reasoner"].has(String(settings.get("api_model", ""))):
 		settings["api_model"] = "deepseek-v4-flash"
+	# 内置快捷指令一次性补发（v0.9.30「给新词配例句」）：只补缺失的，用户删过的不复活
+	if not bool(settings.get("qp_migrated_v1", false)):
+		var qp: Array = settings.get("quick_prompts", [])
+		var names := []
+		for q in qp:
+			names.append(String(q.get("name", "")) if q is Dictionary else "")
+		for dq in DEFAULT_SETTINGS["quick_prompts"]:
+			if not names.has(String(dq.get("name", ""))):
+				qp.append(dq)
+		settings["quick_prompts"] = qp
+		settings["qp_migrated_v1"] = true
 
 func save_settings() -> void:
 	_write_json(SETTINGS_PATH, settings)
@@ -1150,6 +1162,27 @@ func apply_ai_library_edit(ops: Dictionary) -> String:
 				cw[i] = w; found = true; break
 		if not found: cw.append(w)
 		log.append("+单词 " + String(w.w))
+	# 修改已存在词条：只合并 AI 给出的字段（典型：补/改例句 ex、修正释义 m），其余原样保留
+	for w in ops.get("edit_words", []):
+		if not w.has("w"): continue
+		var id := word_id(w)
+		var found := false
+		for i in cw.size():
+			if word_id(cw[i]) == id:
+				for k in w:
+					cw[i][k] = w[k]
+				found = true; break
+		if not found:
+			# 目标不存在：带释义就转新增，没带就跳过，不让 AI 的修改白丢
+			if not w.has("m"): continue
+			if not w.has("p"): w["p"] = ""
+			if not w.has("syn"): w["syn"] = []
+			if not w.has("sim"): w["sim"] = []
+			if not w.has("day"): w["day"] = "自定义"
+			cw.append(w)
+			log.append("+单词(改转增) " + String(w.w))
+			continue
+		log.append("改单词 " + String(w.w))
 	for p in ops.get("add_phrases", []):
 		if not p.has("en"): continue
 		if not p.has("cn"): p["cn"] = ""
@@ -1161,6 +1194,23 @@ func apply_ai_library_edit(ops: Dictionary) -> String:
 				cp[i] = p; found = true; break
 		if not found: cp.append(p)
 		log.append("+词组 " + String(p.en))
+	for p in ops.get("edit_phrases", []):
+		if not p.has("en"): continue
+		# 修改按 en 匹配（phrase_id 含 sec，修改载荷通常不带分组，直接比对会永不命中）
+		var key := String(p.en).to_lower().strip_edges()
+		var found := false
+		for i in cp.size():
+			if String(cp[i].get("en", "")).to_lower().strip_edges() == key:
+				for k in p:
+					cp[i][k] = p[k]
+				found = true; break
+		if not found:
+			if not p.has("cn"): p["cn"] = ""
+			if not p.has("sec"): p["sec"] = "自定义"
+			cp.append(p)
+			log.append("+词组(改转增) " + String(p.en))
+			continue
+		log.append("改词组 " + String(p.en))
 	for id in ops.get("remove_words", []):
 		var sid := String(id).to_lower().strip_edges()
 		if sid == "": continue
@@ -1199,7 +1249,7 @@ func apply_ai_library_edit(ops: Dictionary) -> String:
 
 func backup_libraries(reason: String) -> String:
 	DirAccess.make_dir_recursive_absolute(BACKUP_DIR)
-	var fname := "%s/wordlib_%s.json" % [BACKUP_DIR, Time.get_datetime_string_from_system().replace(":", "-")]
+	var fname := "%s/wordlib_%s_%03d.json" % [BACKUP_DIR, Time.get_datetime_string_from_system().replace(":", "-"), Time.get_ticks_msec() % 1000]   # 毫秒后缀：同一秒内的连续修改不再互相覆盖备份
 	_write_json(fname, {
 		"reason": reason,
 		"time": Time.get_datetime_string_from_system(),
